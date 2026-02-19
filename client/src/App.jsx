@@ -1,13 +1,19 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Login from "./pages/Login";
-import Dashboard from "./pages/Dashboard";
+import Signup from "./pages/Signup";
+import Home from "./pages/Home";
+import CheckBalance from "./pages/CheckBalance";
+import Transfer from "./pages/Transfer";
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Login />} />
-        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/signup" element={<Signup />} />
+        <Route path="/home" element={<Home />} />
+        <Route path="/check-balance" element={<CheckBalance />} />
+        <Route path="/transfer" element={<Transfer />} />
       </Routes>
     </BrowserRouter>
   );

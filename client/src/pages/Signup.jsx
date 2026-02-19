@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { login } from "../api/api";
+import { register } from "../api/api";
 
-export default function Login() {
+export default function Signup() {
+    const [name, setName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
@@ -14,8 +15,8 @@ export default function Login() {
         setError("");
         setLoading(true);
         try {
-            await login(email, password);
-            navigate("/home");
+            await register(name, email, password);
+            navigate("/");
         } catch (err) {
             setError(err.message);
         } finally {
@@ -27,11 +28,23 @@ export default function Login() {
         <div className="flex min-h-screen items-center justify-center bg-gray-100 px-4">
             <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-lg">
                 <div className="mb-8 text-center">
-                    <h1 className="text-3xl font-bold text-gray-900">KodBank</h1>
-                    <p className="mt-2 text-sm text-gray-500">Welcome back</p>
+                    <h1 className="text-3xl font-bold text-gray-900">Join KodBank</h1>
+                    <p className="mt-2 text-sm text-gray-500">Start your digital journey</p>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-6">
+                <form onSubmit={handleSubmit} className="space-y-5">
+                    <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-700">Full Name</label>
+                        <input
+                            type="text"
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            required
+                            className="w-full rounded-xl border border-gray-300 px-4 py-3 text-gray-900 placeholder-gray-400 focus:border-black focus:outline-none focus:ring-2 focus:ring-black/5"
+                            placeholder="John Doe"
+                        />
+                    </div>
+
                     <div>
                         <label className="mb-2 block text-sm font-medium text-gray-700">Email Address</label>
                         <input
@@ -52,7 +65,7 @@ export default function Login() {
                             onChange={(e) => setPassword(e.target.value)}
                             required
                             className="w-full rounded-xl border border-gray-300 px-4 py-3 text-gray-900 placeholder-gray-400 focus:border-black focus:outline-none focus:ring-2 focus:ring-black/5"
-                            placeholder="••••••••"
+                            placeholder="Create a password"
                         />
                     </div>
 
@@ -67,14 +80,14 @@ export default function Login() {
                         disabled={loading}
                         className="w-full rounded-xl bg-black py-3.5 font-semibold text-white shadow-md transition hover:bg-gray-800 hover:shadow-lg disabled:opacity-70"
                     >
-                        {loading ? "Signing in..." : "Sign In"}
+                        {loading ? "Creating Account..." : "Sign Up"}
                     </button>
                 </form>
 
                 <p className="mt-8 text-center text-sm text-gray-500">
-                    Don't have an account?{" "}
-                    <Link to="/signup" className="font-semibold text-black hover:underline">
-                        Create account
+                    Already have an account?{" "}
+                    <Link to="/" className="font-semibold text-black hover:underline">
+                        Sign in
                     </Link>
                 </p>
             </div>

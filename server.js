@@ -12,7 +12,10 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
-app.use(cors({ origin: "http://localhost:5173", credentials: true }));
+app.use(cors({
+  origin: "http://localhost:5173",
+  credentials: true,
+}));
 app.use(express.json());
 app.use(cookieParser());
 
@@ -32,7 +35,7 @@ app.post("/api/register", async (req, res) => {
   try {
     const password_hash = await bcrypt.hash(password, 10);
     await pool.query(
-      "INSERT INTO bank_user (name, email, password_hash, balance) VALUES ($1, $2, $3, 10000.00)",
+      "INSERT INTO bank_user (name, email, password_hash, balance) VALUES ($1, $2, $3, 0.00)",
       [name, email, password_hash]
     );
     res.status(201).json({ message: "User created" });
@@ -56,11 +59,23 @@ app.post("/api/login", async (req, res) => {
     const result = await pool.query("SELECT * FROM bank_user WHERE email = $1", [email]);
     const user = result.rows[0];
 
+    // Cleanup expired tokens
+    await pool.query("DELETE FROM bank_user_jwt WHERE expires_at < NOW()");
+
     if (!user || !(await bcrypt.compare(password, user.password_hash))) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
     const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: "15m" });
+
+    // Store hashed token in DB
+    const tokenHash = await bcrypt.hash(token, 10);
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 mins from now
+
+    await pool.query(
+      "INSERT INTO bank_user_jwt (user_id, token_hash, expires_at) VALUES ($1, $2, $3)",
+      [user.id, tokenHash, expiresAt]
+    );
 
     res.cookie("access_token", token, {
       httpOnly: true,
@@ -71,13 +86,37 @@ app.post("/api/login", async (req, res) => {
 
     res.json({ message: "Login successful" });
   } catch (err) {
+    console.error("Login error:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 });
 
 // ─── Logout ───────────────────────────────────────────────────────────────────
-app.post("/api/logout", (req, res) => {
+app.post("/api/logout", async (req, res) => {
+  const token = req.cookies.access_token;
+
+  // Always clear cookie
   res.clearCookie("access_token", { httpOnly: true, sameSite: "Strict" });
+
+  if (!token) return res.json({ message: "Logged out successfully" });
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Find matching token in DB
+    const result = await pool.query("SELECT id, token_hash FROM bank_user_jwt WHERE user_id = $1", [decoded.userId]);
+
+    for (const row of result.rows) {
+      const isMatch = await bcrypt.compare(token, row.token_hash);
+      if (isMatch) {
+        await pool.query("DELETE FROM bank_user_jwt WHERE id = $1", [row.id]);
+        break;
+      }
+    }
+  } catch (err) {
+    // Ignore verification errors on logout
+  }
+
   res.json({ message: "Logged out successfully" });
 });
 
@@ -106,7 +145,7 @@ app.post("/api/add-balance", authMiddleware, async (req, res) => {
       [amount, req.user.userId]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: "User not found" });
-    res.json({ message: "Balance updated", balance: result.rows[0].balance });
+    res.json({ message: "Balance updated successfully", balance: result.rows[0].balance });
   } catch (err) {
     res.status(500).json({ error: "Internal server error" });
   }
@@ -124,6 +163,15 @@ app.listen(PORT, async () => {
         email         VARCHAR(150) UNIQUE,
         password_hash TEXT,
         balance       NUMERIC(15,2),
+        created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS bank_user_jwt (
+        id            SERIAL PRIMARY KEY,
+        user_id       INTEGER REFERENCES bank_user(id) ON DELETE CASCADE,
+        token_hash    TEXT NOT NULL,
+        expires_at    TIMESTAMP NOT NULL,
         created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);

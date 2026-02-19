@@ -1,11 +1,11 @@
 const BASE_URL = "http://localhost:5000";
 
-const defaultOptions = {
+const options = (method, body) => ({
+    method,
     credentials: "include",
-    headers: {
-        "Content-Type": "application/json",
-    },
-};
+    headers: { "Content-Type": "application/json" },
+    ...(body && { body: JSON.stringify(body) }),
+});
 
 const handle401 = (status) => {
     if (status === 401) {
@@ -16,51 +16,40 @@ const handle401 = (status) => {
     return false;
 };
 
-// POST /api/login
+export const register = async (name, email, password) => {
+    const res = await fetch(`${BASE_URL}/api/register`, options("POST", { name, email, password }));
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || "Registration failed");
+    return data;
+};
+
 export const login = async (email, password) => {
-    const res = await fetch(`${BASE_URL}/api/login`, {
-        ...defaultOptions,
-        method: "POST",
-        body: JSON.stringify({ email, password }),
-    });
-
-    if (handle401(res.status)) return;
-
+    const res = await fetch(`${BASE_URL}/api/login`, options("POST", { email, password }));
     const data = await res.json();
-
+    if (handle401(res.status)) return;
     if (!res.ok) throw new Error(data.message || "Login failed");
-
     return data;
 };
 
-// GET /api/check-balance
-export const checkBalance = async () => {
-    const res = await fetch(`${BASE_URL}/api/check-balance`, {
-        ...defaultOptions,
-        method: "GET",
-    });
-
-    if (handle401(res.status)) return;
-
-    const data = await res.json();
-
-    if (!res.ok) throw new Error(data.error || "Failed to fetch balance");
-
-    return data;
-};
-
-// POST /api/logout
 export const logout = async () => {
-    const res = await fetch(`${BASE_URL}/api/logout`, {
-        ...defaultOptions,
-        method: "POST",
-    });
-
-    if (handle401(res.status)) return;
-
+    const res = await fetch(`${BASE_URL}/api/logout`, options("POST"));
     const data = await res.json();
-
     if (!res.ok) throw new Error(data.message || "Logout failed");
+    return data;
+};
 
+export const checkBalance = async () => {
+    const res = await fetch(`${BASE_URL}/api/check-balance`, options("GET"));
+    const data = await res.json();
+    if (handle401(res.status)) return;
+    if (!res.ok) throw new Error(data.error || "Failed to fetch balance");
+    return data;
+};
+
+export const addBalance = async (amount) => {
+    const res = await fetch(`${BASE_URL}/api/add-balance`, options("POST", { amount }));
+    const data = await res.json();
+    if (handle401(res.status)) return;
+    if (!res.ok) throw new Error(data.error || "Failed to add balance");
     return data;
 };
