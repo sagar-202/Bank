@@ -5,7 +5,9 @@ const cors = require("cors");
 const rateLimit = require("express-rate-limit");
 
 const pool = require("./config/db");
+const initDb = require("./config/initDb");
 const healthRouter = require("./routes/health");
+const authRouter = require("./routes/auth");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -26,12 +28,14 @@ app.use(limiter);
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use("/", healthRouter);
+app.use("/api", authRouter);
 
 // ─── Start Server ─────────────────────────────────────────────────────────────
 const start = async () => {
   try {
     await pool.query("SELECT 1");
     console.log("Database connected");
+    await initDb();
     app.listen(PORT, () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });
