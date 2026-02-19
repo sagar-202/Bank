@@ -152,33 +152,37 @@ app.post("/api/add-balance", authMiddleware, async (req, res) => {
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
-app.listen(PORT, async () => {
-  try {
-    await pool.query("SELECT 1");
-    console.log("Database connected");
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS bank_user (
-        id            SERIAL PRIMARY KEY,
-        name          VARCHAR(100),
-        email         VARCHAR(150) UNIQUE,
-        password_hash TEXT,
-        balance       NUMERIC(15,2),
-        created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS bank_user_jwt (
-        id            SERIAL PRIMARY KEY,
-        user_id       INTEGER REFERENCES bank_user(id) ON DELETE CASCADE,
-        token_hash    TEXT NOT NULL,
-        expires_at    TIMESTAMP NOT NULL,
-        created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-    console.log("Tables ready");
-  } catch (err) {
-    console.error("Startup error:", err.message);
-    process.exit(1);
-  }
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+if (require.main === module) {
+  app.listen(PORT, async () => {
+    try {
+      await pool.query("SELECT 1");
+      console.log("Database connected");
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS bank_user (
+          id            SERIAL PRIMARY KEY,
+          name          VARCHAR(100),
+          email         VARCHAR(150) UNIQUE,
+          password_hash TEXT,
+          balance       NUMERIC(15,2),
+          created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS bank_user_jwt (
+          id            SERIAL PRIMARY KEY,
+          user_id       INTEGER REFERENCES bank_user(id) ON DELETE CASCADE,
+          token_hash    TEXT NOT NULL,
+          expires_at    TIMESTAMP NOT NULL,
+          created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      console.log("Tables ready");
+    } catch (err) {
+      console.error("Startup error:", err.message);
+      process.exit(1);
+    }
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+}
+
+module.exports = app;
