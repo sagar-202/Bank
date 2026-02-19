@@ -12,17 +12,8 @@ const authMiddleware = (req, res, next) => {
         req.user = { userId: decoded.userId };
         next();
     } catch (err) {
-        // Clear the invalid/expired cookie in both cases
-        res.clearCookie("access_token", {
-            httpOnly: true,
-            sameSite: "Strict",
-        });
-
-        if (err.name === "TokenExpiredError") {
-            return res.status(401).json({ error: "Session expired" });
-        }
-
-        return res.status(401).json({ error: "Invalid token" });
+        res.clearCookie("access_token", { httpOnly: true, sameSite: "Strict" });
+        return res.status(401).json({ error: "Invalid or expired token" });
     }
 };
 
