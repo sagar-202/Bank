@@ -12,7 +12,7 @@ const authMiddleware = async (req, res, next) => {
 
     try {
         // 2 & 3. Verify JWT signature
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || "default_dev_secret");
 
         // 4 & 5. Query DB for user's active sessions
         const result = await pool.query(

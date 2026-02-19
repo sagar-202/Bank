@@ -66,7 +66,7 @@ app.post("/api/login", async (req, res) => {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: "15m" });
+    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET || "default_dev_secret", { expiresIn: "15m" });
 
     // Store hashed token in DB
     const tokenHash = await bcrypt.hash(token, 10);
@@ -101,7 +101,7 @@ app.post("/api/logout", async (req, res) => {
   if (!token) return res.json({ message: "Logged out successfully" });
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || "default_dev_secret");
 
     // Find matching token in DB
     const result = await pool.query("SELECT id, token_hash FROM bank_user_jwt WHERE user_id = $1", [decoded.userId]);
