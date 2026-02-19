@@ -8,6 +8,7 @@ const pool = require("./config/db");
 const initDb = require("./config/initDb");
 const healthRouter = require("./routes/health");
 const authRouter = require("./routes/auth");
+const userRouter = require("./routes/user");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -29,6 +30,7 @@ app.use(limiter);
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use("/", healthRouter);
 app.use("/api", authRouter);
+app.use("/api", userRouter);
 
 // ─── Start Server ─────────────────────────────────────────────────────────────
 const start = async () => {
