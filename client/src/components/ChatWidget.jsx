@@ -49,6 +49,7 @@ export default function ChatWidget() {
             const res = await fetch("/api/chatbot", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
+                credentials: "include",
                 body: JSON.stringify({ message: text }),
             });
 
@@ -122,10 +123,10 @@ export default function ChatWidget() {
 
                                 <div
                                     className={`max-w-[230px] px-3 py-2.5 text-xs leading-relaxed font-medium ${msg.role === "user"
-                                            ? "bg-[#0B3D91] text-white rounded-tl-xl rounded-tr-sm rounded-bl-xl"
-                                            : msg.isError
-                                                ? "bg-red-50 text-red-700 border border-red-100 rounded-tr-xl rounded-tl-sm rounded-br-xl"
-                                                : "bg-white text-gray-700 border border-gray-200 shadow-sm rounded-tr-xl rounded-tl-sm rounded-br-xl"
+                                        ? "bg-[#0B3D91] text-white rounded-tl-xl rounded-tr-sm rounded-bl-xl"
+                                        : msg.isError
+                                            ? "bg-red-50 text-red-700 border border-red-100 rounded-tr-xl rounded-tl-sm rounded-br-xl"
+                                            : "bg-white text-gray-700 border border-gray-200 shadow-sm rounded-tr-xl rounded-tl-sm rounded-br-xl"
                                         }`}
                                 >
                                     {msg.text}
