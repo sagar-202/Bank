@@ -1,36 +1,31 @@
-import React from 'react';
-import { useState, useEffect } from "react";
+import React, { useState } from 'react';
+import { useQuery } from "@tanstack/react-query";
 import { fetchTransactions } from "../api/api";
+import TransactionsSkeleton from "../components/skeletons/TransactionsSkeleton";
 
 export default function Statements() {
     const today = new Date().toISOString().split('T')[0];
     const [startDate, setStartDate] = useState(today);
     const [endDate, setEndDate] = useState(today);
-    const [transactions, setTransactions] = useState([]);
-    const [loading, setLoading] = useState(false);
+    // Active filter — only updates on form submit
+    const [activeRange, setActiveRange] = useState({ from: today, to: today });
     const [downloading, setDownloading] = useState(false);
-    const [error, setError] = useState("");
     const [downloadSuccess, setDownloadSuccess] = useState(false);
 
-    const handleFetch = async (e) => {
+    const { data: transactions = [], isLoading: loading, error, isFetching } = useQuery({
+        queryKey: ["transactions", activeRange.from, activeRange.to],
+        queryFn: () => fetchTransactions(activeRange.from, activeRange.to),
+    });
+
+    const handleFetch = (e) => {
         if (e) e.preventDefault();
-        setLoading(true);
-        setError("");
         setDownloadSuccess(false);
-        try {
-            const data = await fetchTransactions(startDate, endDate);
-            setTransactions(data || []);
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            setLoading(false);
-        }
+        setActiveRange({ from: startDate, to: endDate });
     };
 
     const handleDownload = () => {
         setDownloading(true);
         setDownloadSuccess(false);
-        // Simulate PDF generation delay
         setTimeout(() => {
             setDownloading(false);
             setDownloadSuccess(true);

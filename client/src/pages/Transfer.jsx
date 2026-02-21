@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     fetchAccounts,
     fetchBeneficiaries,
@@ -8,13 +9,11 @@ import {
 } from "../api/api";
 
 export default function Transfer() {
+    const queryClient = useQueryClient();
     const [activeTab, setActiveTab] = useState("internal"); // internal, add_beneficiary, external
     const [step, setStep] = useState(1); // 1: Input, 2: Confirmation, 3: Success
 
     // Form States
-    const [accounts, setAccounts] = useState([]);
-    const [beneficiaries, setBeneficiaries] = useState([]);
-    const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState("");
 
@@ -29,29 +28,24 @@ export default function Transfer() {
         otp: "123456" // Simulation
     });
 
-    const fetchData = async () => {
-        try {
-            const [accData, beneData] = await Promise.all([
-                fetchAccounts(),
-                fetchBeneficiaries()
-            ]);
-            setAccounts(accData || []);
-            setBeneficiaries(beneData || []);
-
-            // Set default source account
-            if (accData && accData.length > 0) {
-                setFormData(prev => ({ ...prev, fromAccountId: accData[0].id }));
+    const { data: accounts = [], isLoading: accountsLoading } = useQuery({
+        queryKey: ["accounts"],
+        queryFn: async () => {
+            const data = await fetchAccounts();
+            // Set default source account if not yet set
+            if (data && data.length > 0) {
+                setFormData(prev => prev.fromAccountId ? prev : { ...prev, fromAccountId: data[0].id });
             }
-        } catch (err) {
-            setError("Failed to load initial data");
-        } finally {
-            setLoading(false);
-        }
-    };
+            return data;
+        },
+    });
 
-    useEffect(() => {
-        fetchData();
-    }, []);
+    const { data: beneficiaries = [], isLoading: beneLoading } = useQuery({
+        queryKey: ["beneficiaries"],
+        queryFn: fetchBeneficiaries,
+    });
+
+    const loading = accountsLoading || beneLoading;
 
     const handleTabChange = (tab) => {
         setActiveTab(tab);
@@ -97,6 +91,13 @@ export default function Transfer() {
                 await externalTransfer(formData.fromAccountId, formData.beneficiaryId, Number(formData.amount), formData.otp);
             } else if (activeTab === "add_beneficiary") {
                 await addBeneficiary(formData.beneficiaryAccountNumber, formData.nickname);
+            }
+            // Invalidate caches so Dashboard/Accounts are fresh on next visit
+            if (activeTab !== "add_beneficiary") {
+                queryClient.invalidateQueries({ queryKey: ["accounts"] });
+                queryClient.invalidateQueries({ queryKey: ["transactions"] });
+            } else {
+                queryClient.invalidateQueries({ queryKey: ["beneficiaries"] });
             }
             setStep(3);
         } catch (err) {
@@ -150,8 +151,8 @@ export default function Transfer() {
                         key={tab.id}
                         onClick={() => handleTabChange(tab.id)}
                         className={`px-6 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === tab.id
-                                ? 'bg-white text-[#0B3D91] shadow-sm'
-                                : 'text-gray-400 hover:text-gray-600'
+                            ? 'bg-white text-[#0B3D91] shadow-sm'
+                            : 'text-gray-400 hover:text-gray-600'
                             }`}
                     >
                         {tab.label}

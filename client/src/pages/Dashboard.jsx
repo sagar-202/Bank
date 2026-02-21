@@ -1,40 +1,31 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     fetchTransactions,
     fetchAccounts
 } from "../api/api";
 import DepositModal from "../components/DepositModal";
+import DashboardSkeleton from "../components/skeletons/DashboardSkeleton";
 
 export default function Dashboard() {
-    const [accounts, setAccounts] = useState([]);
-    const [transactions, setTransactions] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
+    const queryClient = useQueryClient();
     const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
     const [depositSuccessMsg, setDepositSuccessMsg] = useState("");
 
-    const fetchData = async () => {
-        try {
-            const [accData, transData] = await Promise.all([
-                fetchAccounts(),
-                fetchTransactions()
-            ]);
-            setAccounts(accData || []);
-            setTransactions(transData || []);
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            setLoading(false);
-        }
-    };
+    const { data: accounts = [], isLoading: accountsLoading, error: accountsError } = useQuery({
+        queryKey: ["accounts"],
+        queryFn: fetchAccounts,
+    });
 
-    useEffect(() => {
-        fetchData();
-    }, []);
+    const { data: transactions = [], isLoading: transLoading } = useQuery({
+        queryKey: ["transactions"],
+        queryFn: () => fetchTransactions(),
+    });
 
     const handleDepositSuccess = () => {
         setDepositSuccessMsg("Funds deposited successfully!");
-        fetchData();
+        queryClient.invalidateQueries({ queryKey: ["accounts"] });
+        queryClient.invalidateQueries({ queryKey: ["transactions"] });
         setTimeout(() => setDepositSuccessMsg(""), 5000);
     };
 
@@ -48,15 +39,8 @@ export default function Dashboard() {
 
     const totalBalance = accounts.reduce((sum, acc) => sum + Number(acc.balance), 0);
 
-    if (loading) {
-        return (
-            <div className="flex h-[80vh] w-full items-center justify-center bg-white text-gray-500 font-sans">
-                <div className="text-center">
-                    <div className="w-8 h-8 border-2 border-[#0B3D91] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                    <p className="text-sm font-medium tracking-wide text-[#0B3D91]">SECURE BANKING INITIALIZING</p>
-                </div>
-            </div>
-        );
+    if (accountsLoading || transLoading) {
+        return <DashboardSkeleton />;
     }
 
     return (
@@ -77,9 +61,9 @@ export default function Dashboard() {
             </div>
 
             {/* ALERTS */}
-            {error && (
+            {accountsError && (
                 <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded text-red-700 text-sm font-medium">
-                    {error}
+                    {accountsError.message}
                 </div>
             )}
             {depositSuccessMsg && (
@@ -158,8 +142,8 @@ export default function Dashboard() {
                         </thead>
                         <tbody className="divide-y divide-gray-50">
                             {transactions.length > 0 ? (
-                                transactions.map((t) => {
-                                    const isDebit = t.type === 'withdraw' || t.amount < 0;
+                                transactions.slice(0, 10).map((t) => {
+                                    const isDebit = t.type === 'withdraw' || t.type === 'transfer';
                                     return (
                                         <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
                                             <td className="px-6 py-4">

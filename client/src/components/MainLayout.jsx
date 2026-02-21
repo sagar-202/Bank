@@ -1,22 +1,13 @@
-import { useState, useEffect } from "react";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
 import { fetchProfile } from "../api/api";
+import { useQuery } from "@tanstack/react-query";
 
 export default function MainLayout({ children }) {
-    const [profile, setProfile] = useState(null);
-
-    useEffect(() => {
-        const getProfile = async () => {
-            try {
-                const data = await fetchProfile();
-                setProfile(data);
-            } catch (err) {
-                console.error("Failed to fetch profile for layout:", err);
-            }
-        };
-        getProfile();
-    }, []);
+    const { data: profile } = useQuery({
+        queryKey: ["profile"],
+        queryFn: fetchProfile,
+    });
 
     return (
         <div className="flex bg-white min-h-screen">

@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import Dashboard from "./pages/Dashboard";
@@ -10,6 +10,15 @@ import Profile from "./pages/Profile";
 import Security from "./pages/Security";
 import MainLayout from "./components/MainLayout";
 
+// Single layout shell — Sidebar & Header only mount once
+function ProtectedLayout() {
+  return (
+    <MainLayout>
+      <Outlet />
+    </MainLayout>
+  );
+}
+
 function App() {
   return (
     <BrowserRouter>
@@ -19,14 +28,16 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
 
-        {/* Protected Routes (Wrapped in MainLayout) */}
-        <Route path="/dashboard" element={<MainLayout><Dashboard /></MainLayout>} />
-        <Route path="/accounts" element={<MainLayout><Accounts /></MainLayout>} />
-        <Route path="/transfers" element={<MainLayout><Transfer /></MainLayout>} />
-        <Route path="/statements" element={<MainLayout><Statements /></MainLayout>} />
-        <Route path="/profile" element={<MainLayout><Profile /></MainLayout>} />
-        <Route path="/security" element={<MainLayout><Security /></MainLayout>} />
-        <Route path="/check-balance" element={<MainLayout><CheckBalance /></MainLayout>} />
+        {/* Protected Routes — single layout shell */}
+        <Route element={<ProtectedLayout />}>
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/accounts" element={<Accounts />} />
+          <Route path="/transfers" element={<Transfer />} />
+          <Route path="/statements" element={<Statements />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/security" element={<Security />} />
+          <Route path="/check-balance" element={<CheckBalance />} />
+        </Route>
       </Routes>
     </BrowserRouter>
   );

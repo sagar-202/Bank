@@ -1,37 +1,23 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchProfile, updateProfile } from "../api/api";
 
 export default function Profile() {
-    const [profile, setProfile] = useState(null);
-    const [loading, setLoading] = useState(true);
+    const queryClient = useQueryClient();
     const [updating, setUpdating] = useState(false);
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
+    const [formData, setFormData] = useState({ name: "", phone: "" });
 
-    // Form State
-    const [formData, setFormData] = useState({
-        name: "",
-        phone: ""
+    const { data: profile, isLoading: loading } = useQuery({
+        queryKey: ["profile"],
+        queryFn: async () => {
+            const data = await fetchProfile();
+            // Seed form on first load
+            setFormData(prev => prev.name ? prev : { name: data.name, phone: data.phone || "" });
+            return data;
+        },
     });
-
-    useEffect(() => {
-        const loadProfile = async () => {
-            try {
-                const data = await fetchProfile();
-                setProfile(data);
-                setFormData({
-                    name: data.name,
-                    phone: data.phone || ""
-                });
-            } catch (err) {
-                console.error(err);
-                setError("Failed to load profile information");
-            } finally {
-                setLoading(false);
-            }
-        };
-        loadProfile();
-    }, []);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -41,7 +27,7 @@ export default function Profile() {
 
         try {
             const data = await updateProfile(formData.name, formData.phone);
-            setProfile(data.profile);
+            queryClient.setQueryData(["profile"], data.profile);
             setSuccess("Profile updated successfully");
             setTimeout(() => setSuccess(""), 5000);
         } catch (err) {

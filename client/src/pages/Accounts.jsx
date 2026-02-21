@@ -1,28 +1,19 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchAccounts } from "../api/api";
 import OpenAccountModal from "../components/OpenAccountModal";
 import AccountDetailsView from "../components/AccountDetailsView";
+import AccountsSkeleton from "../components/skeletons/AccountsSkeleton";
 
 export default function Accounts() {
-    const [accounts, setAccounts] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const queryClient = useQueryClient();
     const [selectedAccount, setSelectedAccount] = useState(null);
     const [isOpenAccountModalOpen, setIsOpenAccountModalOpen] = useState(false);
 
-    const getAccounts = async () => {
-        try {
-            const data = await fetchAccounts();
-            setAccounts(data);
-        } catch (err) {
-            console.error("Failed to fetch accounts:", err);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        getAccounts();
-    }, []);
+    const { data: accounts = [], isLoading } = useQuery({
+        queryKey: ["accounts"],
+        queryFn: fetchAccounts,
+    });
 
     const formatCurrency = (value) => {
         return new Intl.NumberFormat('en-IN', {
@@ -32,12 +23,8 @@ export default function Accounts() {
         }).format(value);
     };
 
-    if (loading) {
-        return (
-            <div className="flex h-[80vh] items-center justify-center">
-                <div className="w-8 h-8 border-2 border-[#0B3D91] border-t-transparent rounded-full animate-spin"></div>
-            </div>
-        );
+    if (isLoading) {
+        return <AccountsSkeleton />;
     }
 
     if (selectedAccount) {
@@ -46,7 +33,7 @@ export default function Accounts() {
                 account={selectedAccount}
                 onBack={() => {
                     setSelectedAccount(null);
-                    getAccounts(); // Refresh balance in list
+                    queryClient.invalidateQueries({ queryKey: ["accounts"] });
                 }}
             />
         );
@@ -111,7 +98,7 @@ export default function Accounts() {
             <OpenAccountModal
                 isOpen={isOpenAccountModalOpen}
                 onClose={() => setIsOpenAccountModalOpen(false)}
-                onSuccess={getAccounts}
+                onSuccess={() => queryClient.invalidateQueries({ queryKey: ["accounts"] })}
             />
         </div>
     );
