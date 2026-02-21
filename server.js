@@ -848,7 +848,8 @@ if (require.main === module) {
 }
 
 // ─── AI Chatbot Route (Direct HF Inference API) ───────────────────────────────
-const HF_INFERENCE_URL = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2";
+// Using new HF router endpoint + non-gated model (Phi-3-mini doesn't require license acceptance)
+const HF_INFERENCE_URL = "https://router.huggingface.co/hf-inference/models/microsoft/Phi-3-mini-4k-instruct/v1/chat/completions";
 
 const BANKING_SYSTEM_PROMPT = `You are VibeBank's professional AI banking assistant.
 Rules:
@@ -886,8 +887,11 @@ app.post("/api/chatbot", authMiddleware, async (req, res) => {
     if (parts.length) systemPrompt += `\n\nUser Account Context (read-only):\n${parts.join("\n")}`;
   }
 
-  // Mistral instruct format
-  const prompt = `<s>[INST] <<SYS>>\n${systemPrompt}\n<</SYS>>\n\n${message.trim()} [/INST]`;
+  // Build messages array (OpenAI-compatible format required by new HF router)
+  const messages = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: message.trim() },
+  ];
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30000);
@@ -902,14 +906,11 @@ app.post("/api/chatbot", authMiddleware, async (req, res) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        inputs: prompt,
-        parameters: {
-          max_new_tokens: 200,
-          temperature: 0.7,
-          top_p: 0.9,
-          do_sample: true,
-          return_full_text: false,
-        },
+        model: "microsoft/Phi-3-mini-4k-instruct",
+        messages,
+        max_tokens: 200,
+        temperature: 0.7,
+        stream: false,
       }),
       signal: controller.signal,
     });
@@ -935,14 +936,9 @@ app.post("/api/chatbot", authMiddleware, async (req, res) => {
       return res.status(502).json({ error: "AI service error", details: "invalid_json" });
     }
 
-    let reply = "";
-    if (Array.isArray(data) && data.length > 0) {
-      reply = data[0]?.generated_text?.trim() || "";
-    } else if (data?.generated_text) {
-      reply = data.generated_text.trim();
-    }
-
-    if (!reply) reply = "I'm sorry, I couldn't generate a response. Please rephrase your question.";
+    // OpenAI-compatible response format: choices[0].message.content
+    const reply = data?.choices?.[0]?.message?.content?.trim()
+      || "I'm sorry, I couldn't generate a response. Please rephrase your question.";
 
     return res.json({ reply });
 
