@@ -148,6 +148,7 @@ export default function Security() {
                                         type="password"
                                         value={formData.oldPassword}
                                         onChange={(e) => setFormData({ ...formData, oldPassword: e.target.value })}
+                                        autoComplete="current-password"
                                         className="w-full border-gray-200 rounded-xl bg-gray-50 p-4 text-sm font-bold text-gray-800 focus:ring-1 focus:ring-[#0B3D91] transition-all outline-none"
                                         required
                                     />
@@ -160,6 +161,7 @@ export default function Security() {
                                             type="password"
                                             value={formData.newPassword}
                                             onChange={(e) => setFormData({ ...formData, newPassword: e.target.value })}
+                                            autoComplete="new-password"
                                             className="w-full border-gray-200 rounded-xl bg-gray-50 p-4 text-sm font-bold text-gray-800 focus:ring-1 focus:ring-[#0B3D91] transition-all outline-none"
                                             required
                                         />
@@ -170,6 +172,7 @@ export default function Security() {
                                             type="password"
                                             value={formData.confirmPassword}
                                             onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                                            autoComplete="new-password"
                                             className="w-full border-gray-200 rounded-xl bg-gray-50 p-4 text-sm font-bold text-gray-800 focus:ring-1 focus:ring-[#0B3D91] transition-all outline-none"
                                             required
                                         />

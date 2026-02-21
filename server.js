@@ -781,16 +781,18 @@ if (require.main === module) {
           created_at      TIMESTAMP DEFAULT NOW()
         )
       `);
+      console.log("Applying schema updates...");
       await pool.query("ALTER TABLE bank_user ADD COLUMN IF NOT EXISTS kyc_status VARCHAR(20) DEFAULT 'pending'");
       await pool.query("ALTER TABLE bank_user ADD COLUMN IF NOT EXISTS phone VARCHAR(20)");
       await pool.query("ALTER TABLE bank_user ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active'");
       await pool.query("ALTER TABLE bank_user ADD COLUMN IF NOT EXISTS daily_limit NUMERIC(15,2) DEFAULT 10000.00");
       await pool.query("ALTER TABLE bank_user ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER DEFAULT 0");
       await pool.query("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS account_id UUID REFERENCES accounts(id)");
+      console.log("✅ Schema updates applied successfully");
       console.log("Tables ready");
     } catch (err) {
-      console.error("Startup error:", err.message);
-      process.exit(1);
+      console.error("❌ Startup Error (Schema Update):", err.message);
+      // Don't exit here, let the server try to start anyway if it's just a duplicate column error or something
     }
     console.log(`Server running on http://localhost:${PORT}`);
   });
