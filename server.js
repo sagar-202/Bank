@@ -847,11 +847,13 @@ if (require.main === module) {
   });
 }
 
-// ─── AI Chatbot Route ──────────────────────────────────────────────────────────
+// ─── AI Chatbot Route ─────────────────────────────────────────────────────────
 const HF_SPACE_URL = process.env.HF_SPACE_URL || "https://sagar2080-vibebank-assistant.hf.space";
 
 app.post("/api/chatbot", authMiddleware, async (req, res) => {
   const { message, context } = req.body;
+
+  console.log("[chatbot] Incoming message:", message);
 
   if (!message || typeof message !== "string") {
     return res.status(400).json({ error: "message is required and must be a string" });
@@ -861,33 +863,56 @@ app.post("/api/chatbot", authMiddleware, async (req, res) => {
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
+  const timeout = setTimeout(() => controller.abort(), 15000);
 
   try {
-    const response = await fetch(`${HF_SPACE_URL}/chat`, {
+    const hfUrl = `${HF_SPACE_URL}/chat`;
+    console.log("[chatbot] Calling HF Space:", hfUrl);
+
+    const response = await fetch(hfUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: message.trim(), context: context || undefined }),
+      body: JSON.stringify({
+        message: message.trim(),
+        context: context || undefined,
+      }),
       signal: controller.signal,
     });
 
     clearTimeout(timeout);
 
+    console.log("[chatbot] HF response status:", response.status);
+
+    const rawBody = await response.text();
+    console.log("[chatbot] HF response body:", rawBody);
+
     if (!response.ok) {
-      const errText = await response.text();
-      console.error("HF Space error:", errText);
-      return res.status(502).json({ error: "Assistant service is currently unavailable." });
+      return res.status(502).json({
+        error: "AI service error",
+        details: response.status,
+      });
     }
 
-    const data = await response.json();
-    return res.json({ reply: data.reply });
+    let data;
+    try {
+      data = JSON.parse(rawBody);
+    } catch {
+      console.error("[chatbot] Failed to parse HF JSON:", rawBody);
+      return res.status(502).json({ error: "AI service error", details: "invalid_json" });
+    }
+
+    return res.json({ reply: data.reply || "No response from assistant." });
+
   } catch (err) {
     clearTimeout(timeout);
+    console.error("[chatbot] Error name:", err.name);
+    console.error("[chatbot] Error message:", err.message);
+    console.error("[chatbot] Full stack:", err.stack);
+
     if (err.name === "AbortError") {
-      return res.status(504).json({ error: "Assistant timed out. Please try again." });
+      return res.status(504).json({ error: "AI service timed out. Please try again." });
     }
-    console.error("Chatbot proxy error:", err.message);
-    return res.status(500).json({ error: "Assistant is currently unavailable. Please try again later." });
+    return res.status(502).json({ error: "AI service unreachable" });
   }
 });
 
