@@ -3,12 +3,15 @@ import {
     fetchTransactions,
     fetchAccounts
 } from "../api/api";
+import DepositModal from "../components/DepositModal";
 
 export default function Dashboard() {
     const [accounts, setAccounts] = useState([]);
     const [transactions, setTransactions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
+    const [depositSuccessMsg, setDepositSuccessMsg] = useState("");
 
     const fetchData = async () => {
         try {
@@ -28,6 +31,12 @@ export default function Dashboard() {
     useEffect(() => {
         fetchData();
     }, []);
+
+    const handleDepositSuccess = () => {
+        setDepositSuccessMsg("Funds deposited successfully!");
+        fetchData();
+        setTimeout(() => setDepositSuccessMsg(""), 5000);
+    };
 
     const formatCurrency = (value) => {
         return new Intl.NumberFormat('en-IN', {
@@ -53,15 +62,29 @@ export default function Dashboard() {
     return (
         <div className="space-y-10 pb-10">
             {/* Header / Page Title */}
-            <div>
-                <h2 className="text-2xl font-bold text-gray-800">Financial Overview</h2>
-                <p className="text-gray-500 text-sm">Welcome back to your corporate dashboard.</p>
+            <div className="flex justify-between items-start">
+                <div>
+                    <h2 className="text-2xl font-bold text-gray-800">Financial Overview</h2>
+                    <p className="text-gray-500 text-sm">Welcome back to your corporate dashboard.</p>
+                </div>
+                <button
+                    onClick={() => setIsDepositModalOpen(true)}
+                    className="bg-[#0B3D91] text-white px-6 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest shadow-lg hover:bg-[#082d6b] transition-all flex items-center space-x-2"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="M12 5v14" /></svg>
+                    <span>Deposit Funds</span>
+                </button>
             </div>
 
-            {/* ERROR ALERT */}
+            {/* ALERTS */}
             {error && (
                 <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded text-red-700 text-sm font-medium">
                     {error}
+                </div>
+            )}
+            {depositSuccessMsg && (
+                <div className="bg-green-50 border-l-4 border-green-500 p-4 rounded text-green-700 text-sm font-medium animate-in fade-in slide-in-from-top-2">
+                    {depositSuccessMsg}
                 </div>
             )}
 
@@ -149,8 +172,8 @@ export default function Dashboard() {
                                                         )}
                                                     </div>
                                                     <div>
-                                                        <p className="text-sm font-bold text-gray-800 capitalize">{t.type}</p>
-                                                        <p className="text-[10px] font-medium text-gray-400">Ref: {t.id.slice(0, 8).toUpperCase()}</p>
+                                                        <p className="text-sm font-bold text-gray-800">{t.description || t.type.charAt(0).toUpperCase() + t.type.slice(1)}</p>
+                                                        <p className="text-[10px] font-medium text-gray-400">Ref: {t.reference_id?.slice(0, 8).toUpperCase() || t.id.slice(0, 8).toUpperCase()}</p>
                                                     </div>
                                                 </div>
                                             </td>
@@ -179,6 +202,13 @@ export default function Dashboard() {
                     </table>
                 </div>
             </section>
+
+            <DepositModal
+                accounts={accounts}
+                isOpen={isDepositModalOpen}
+                onClose={() => setIsDepositModalOpen(false)}
+                onSuccess={handleDepositSuccess}
+            />
         </div>
     );
 }

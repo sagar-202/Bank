@@ -148,7 +148,7 @@ export default function Statements() {
                                             <td className="px-8 py-6 text-sm font-bold text-gray-800 truncate">{formatDate(tx.created_at)}</td>
                                             <td className="px-8 py-6 text-[11px] font-mono font-bold text-gray-400 uppercase">{tx.id.substring(0, 8)}...</td>
                                             <td className="px-8 py-6 text-sm font-medium text-gray-600">
-                                                {tx.type === 'transfer' ? 'Internal Transfer Out' : tx.type === 'deposit' ? 'Cash/Transfer Deposit' : 'ATM Withdrawal'}
+                                                {tx.description || (tx.type === 'transfer' ? 'Internal Transfer Out' : tx.type === 'deposit' ? 'Cash/Transfer Deposit' : 'ATM Withdrawal')}
                                             </td>
                                             <td className="px-8 py-6">
                                                 <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg border ${isDebit ? 'bg-red-50 text-red-700 border-red-100' : 'bg-green-50 text-green-700 border-green-100'

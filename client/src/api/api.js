@@ -62,11 +62,13 @@ export const withdraw = async (amount) => {
     return data;
 };
 
-export const fetchTransactions = async (startDate, endDate) => {
+export const fetchTransactions = async (fromDate, toDate) => {
     let url = `${BASE_URL}/api/transactions`;
-    if (startDate && endDate) {
-        url += `?startDate=${startDate}&endDate=${endDate}`;
-    }
+    const params = new URLSearchParams();
+    if (fromDate) params.append("fromDate", fromDate);
+    if (toDate) params.append("toDate", toDate);
+    if (params.toString()) url += `?${params.toString()}`;
+
     const res = await fetch(url, options("GET"));
     const data = await res.json();
     if (handle401(res.status)) return;
@@ -158,5 +160,12 @@ export const changePassword = async (oldPassword, newPassword) => {
     const data = await res.json();
     if (handle401(res.status)) return;
     if (!res.ok) throw new Error(data.error || "Failed to change password");
+    return data;
+};
+export const depositFunds = async (accountId, amount) => {
+    const res = await fetch(`${BASE_URL}/api/deposit`, options("POST", { accountId, amount }));
+    const data = await res.json();
+    if (handle401(res.status)) return;
+    if (!res.ok) throw new Error(data.error || "Failed to deposit funds");
     return data;
 };
