@@ -847,9 +847,9 @@ if (require.main === module) {
   });
 }
 
-// ─── AI Chatbot Route (Direct HF Inference API) ───────────────────────────────
-// Using new HF router endpoint + non-gated model (Phi-3-mini doesn't require license acceptance)
-const HF_INFERENCE_URL = "https://router.huggingface.co/hf-inference/models/microsoft/Phi-3-mini-4k-instruct/v1/chat/completions";
+// ─── AI Chatbot Route (Groq API — free, OpenAI-compatible) ───────────────────
+// Groq: free tier, no credit card, 30 req/min, 200 tok/s
+const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 const BANKING_SYSTEM_PROMPT = `You are VibeBank's professional AI banking assistant.
 Rules:
@@ -871,9 +871,9 @@ app.post("/api/chatbot", authMiddleware, async (req, res) => {
     return res.status(400).json({ error: "message too long (max 1000 chars)" });
   }
 
-  const HF_API_TOKEN = process.env.HF_API_TOKEN;
-  if (!HF_API_TOKEN) {
-    console.error("[chatbot] HF_API_TOKEN not set in .env");
+  const GROQ_API_KEY = process.env.GROQ_API_KEY;
+  if (!GROQ_API_KEY) {
+    console.error("[chatbot] GROQ_API_KEY not set in .env");
     return res.status(500).json({ error: "AI service not configured" });
   }
 
@@ -897,16 +897,16 @@ app.post("/api/chatbot", authMiddleware, async (req, res) => {
   const timeout = setTimeout(() => controller.abort(), 30000);
 
   try {
-    console.log("[chatbot] Calling HF Inference API...");
+    console.log("[chatbot] Calling Groq API...");
 
-    const response = await fetch(HF_INFERENCE_URL, {
+    const response = await fetch(GROQ_API_URL, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${HF_API_TOKEN}`,
+        "Authorization": `Bearer ${GROQ_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "microsoft/Phi-3-mini-4k-instruct",
+        model: "llama-3.1-8b-instant",
         messages,
         max_tokens: 200,
         temperature: 0.7,
