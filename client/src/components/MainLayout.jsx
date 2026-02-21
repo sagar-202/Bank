@@ -1,7 +1,9 @@
 import Sidebar from "./Sidebar";
 import Header from "./Header";
+import ChatWidget from "./ChatWidget";
 import { fetchProfile } from "../api/api";
 import { useQuery } from "@tanstack/react-query";
+
 
 export default function MainLayout({ children }) {
     const { data: profile } = useQuery({
@@ -23,6 +25,7 @@ export default function MainLayout({ children }) {
                     {children}
                 </main>
             </div>
+            <ChatWidget />
         </div>
     );
 }

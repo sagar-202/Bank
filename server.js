@@ -847,4 +847,48 @@ if (require.main === module) {
   });
 }
 
+// ─── AI Chatbot Route ──────────────────────────────────────────────────────────
+const HF_SPACE_URL = process.env.HF_SPACE_URL || "https://sagar2080-vibebank-assistant.hf.space";
+
+app.post("/api/chatbot", authMiddleware, async (req, res) => {
+  const { message, context } = req.body;
+
+  if (!message || typeof message !== "string") {
+    return res.status(400).json({ error: "message is required and must be a string" });
+  }
+  if (message.trim().length === 0 || message.length > 1000) {
+    return res.status(400).json({ error: "message must be between 1 and 1000 characters" });
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+
+  try {
+    const response = await fetch(`${HF_SPACE_URL}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: message.trim(), context: context || undefined }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error("HF Space error:", errText);
+      return res.status(502).json({ error: "Assistant service is currently unavailable." });
+    }
+
+    const data = await response.json();
+    return res.json({ reply: data.reply });
+  } catch (err) {
+    clearTimeout(timeout);
+    if (err.name === "AbortError") {
+      return res.status(504).json({ error: "Assistant timed out. Please try again." });
+    }
+    console.error("Chatbot proxy error:", err.message);
+    return res.status(500).json({ error: "Assistant is currently unavailable. Please try again later." });
+  }
+});
+
 module.exports = app;
