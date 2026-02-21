@@ -626,7 +626,7 @@ app.get("/api/profile", authMiddleware, async (req, res, next) => {
 
   try {
     const result = await pool.query(
-      "SELECT name, email, phone, kyc_status FROM bank_user WHERE id = $1",
+      "SELECT name, email, phone, kyc_status, status, daily_limit, failed_login_attempts FROM bank_user WHERE id = $1",
       [userId]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: "User not found" });
@@ -656,20 +656,51 @@ app.put("/api/profile", authMiddleware, async (req, res, next) => {
   }
 });
 
+app.post("/api/change-password", authMiddleware, async (req, res, next) => {
+  const { oldPassword, newPassword } = req.body;
+  const userId = req.user.userId;
+
+  if (!oldPassword || !newPassword) {
+    return res.status(400).json({ error: "Old and new passwords are required." });
+  }
+
+  try {
+    const userRes = await pool.query("SELECT password_hash FROM bank_user WHERE id = $1", [userId]);
+    if (userRes.rows.length === 0) return res.status(404).json({ error: "User not found" });
+
+    const isValid = await bcrypt.compare(oldPassword, userRes.rows[0].password_hash);
+    if (!isValid) return res.status(401).json({ error: "Incorrect old password" });
+
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await pool.query("UPDATE bank_user SET password_hash = $1 WHERE id = $2", [newHash, userId]);
+
+    res.json({ message: "Password updated successfully" });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ─── Transaction History ──────────────────────────────────────────────────────
 app.get("/api/transactions", authMiddleware, async (req, res, next) => {
   const userId = req.user.userId;
+  const { startDate, endDate } = req.query;
 
   try {
-    const result = await pool.query(
-      `SELECT id, type, amount, related_user_id, account_id, created_at 
-       FROM transactions 
-       WHERE user_id = $1 
-       ORDER BY created_at DESC 
-       LIMIT 20`,
-      [userId]
-    );
+    let query = `
+      SELECT id, type, amount, related_user_id, account_id, created_at 
+      FROM transactions 
+      WHERE user_id = $1
+    `;
+    const params = [userId];
 
+    if (startDate && endDate) {
+      query += ` AND created_at >= $2 AND created_at <= $3`;
+      params.push(startDate, endDate);
+    }
+
+    query += ` ORDER BY created_at DESC LIMIT 100`;
+
+    const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) {
     next(err);
@@ -711,6 +742,11 @@ if (require.main === module) {
           email         VARCHAR(150) UNIQUE,
           password_hash TEXT,
           balance       NUMERIC(15,2),
+          kyc_status    VARCHAR(20) DEFAULT 'pending',
+          phone         VARCHAR(20),
+          status        VARCHAR(20) DEFAULT 'active',
+          daily_limit   NUMERIC(15,2) DEFAULT 10000.00,
+          failed_login_attempts INTEGER DEFAULT 0,
           created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `);
@@ -745,7 +781,11 @@ if (require.main === module) {
           created_at      TIMESTAMP DEFAULT NOW()
         )
       `);
-      // Update historical transactions if they don't have account_id
+      await pool.query("ALTER TABLE bank_user ADD COLUMN IF NOT EXISTS kyc_status VARCHAR(20) DEFAULT 'pending'");
+      await pool.query("ALTER TABLE bank_user ADD COLUMN IF NOT EXISTS phone VARCHAR(20)");
+      await pool.query("ALTER TABLE bank_user ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active'");
+      await pool.query("ALTER TABLE bank_user ADD COLUMN IF NOT EXISTS daily_limit NUMERIC(15,2) DEFAULT 10000.00");
+      await pool.query("ALTER TABLE bank_user ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER DEFAULT 0");
       await pool.query("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS account_id UUID REFERENCES accounts(id)");
       console.log("Tables ready");
     } catch (err) {

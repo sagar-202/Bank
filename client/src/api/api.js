@@ -62,8 +62,12 @@ export const withdraw = async (amount) => {
     return data;
 };
 
-export const fetchTransactions = async () => {
-    const res = await fetch(`${BASE_URL}/api/transactions`, options("GET"));
+export const fetchTransactions = async (startDate, endDate) => {
+    let url = `${BASE_URL}/api/transactions`;
+    if (startDate && endDate) {
+        url += `?startDate=${startDate}&endDate=${endDate}`;
+    }
+    const res = await fetch(url, options("GET"));
     const data = await res.json();
     if (handle401(res.status)) return;
     if (!res.ok) throw new Error(data.error || "Failed to fetch transactions");
@@ -147,5 +151,12 @@ export const fetchAccountTransactions = async (accountId) => {
     const data = await res.json();
     if (handle401(res.status)) return;
     if (!res.ok) throw new Error(data.error || "Failed to fetch account transactions");
+    return data;
+};
+export const changePassword = async (oldPassword, newPassword) => {
+    const res = await fetch(`${BASE_URL}/api/change-password`, options("POST", { oldPassword, newPassword }));
+    const data = await res.json();
+    if (handle401(res.status)) return;
+    if (!res.ok) throw new Error(data.error || "Failed to change password");
     return data;
 };

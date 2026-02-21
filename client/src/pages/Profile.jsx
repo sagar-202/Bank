@@ -1,157 +1,171 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from "react";
+import { fetchProfile, updateProfile } from "../api/api";
 
-const Profile = () => {
+export default function Profile() {
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
-    const [formData, setFormData] = useState({ name: '', phone: '' });
+    const [updating, setUpdating] = useState(false);
+    const [error, setError] = useState("");
+    const [success, setSuccess] = useState("");
+
+    // Form State
+    const [formData, setFormData] = useState({
+        name: "",
+        phone: ""
+    });
 
     useEffect(() => {
-        fetchProfile();
+        const loadProfile = async () => {
+            try {
+                const data = await fetchProfile();
+                setProfile(data);
+                setFormData({
+                    name: data.name,
+                    phone: data.phone || ""
+                });
+            } catch (err) {
+                console.error(err);
+                setError("Failed to load profile information");
+            } finally {
+                setLoading(false);
+            }
+        };
+        loadProfile();
     }, []);
 
-    const fetchProfile = async () => {
-        try {
-            const res = await fetch('/api/profile');
-            const data = await res.json();
-            if (res.ok) {
-                setProfile(data);
-                setFormData({ name: data.name, phone: data.phone || '' });
-            } else {
-                setError(data.error || 'Failed to fetch profile');
-            }
-        } catch (err) {
-            setError('Network error. Please try again.');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleUpdate = async (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        setSuccess('');
-        setError('');
+        setUpdating(true);
+        setError("");
+        setSuccess("");
 
         try {
-            const res = await fetch('/api/profile', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(formData),
-            });
-            const data = await res.json();
-            if (res.ok) {
-                setProfile(data.profile);
-                setSuccess('Profile updated successfully!');
-            } else {
-                setError(data.error || 'Update failed');
-            }
+            const data = await updateProfile(formData.name, formData.phone);
+            setProfile(data.profile);
+            setSuccess("Profile updated successfully");
+            setTimeout(() => setSuccess(""), 5000);
         } catch (err) {
-            setError('Update failed. Please try again.');
+            setError(err.message || "Failed to update profile");
+        } finally {
+            setUpdating(false);
         }
     };
 
-    if (loading) return <div className="p-6">Loading profile...</div>;
+    if (loading) {
+        return (
+            <div className="flex h-[80vh] items-center justify-center">
+                <div className="w-8 h-8 border-2 border-[#0B3D91] border-t-transparent rounded-full animate-spin"></div>
+            </div>
+        );
+    }
+
+    const isVerified = profile?.kyc_status === 'verified';
 
     return (
-        <div className="p-6 max-w-4xl mx-auto">
-            <div className="flex justify-between items-center mb-8">
-                <h1 className="text-3xl font-bold text-slate-900 font-display">User Profile</h1>
-                <div className={`px-4 py-1.5 rounded-full text-sm font-semibold flex items-center gap-2 ${profile?.kyc_status === 'verified' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+        <div className="max-w-4xl mx-auto pb-20 mt-10 px-4">
+            <div className="mb-10 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-black text-gray-800 tracking-tight">Financial Profile</h1>
+                    <p className="text-gray-500 font-medium">Manage your personal and contact identifiers</p>
+                </div>
+
+                <div className={`flex items-center space-x-2 px-4 py-2 rounded-full border shadow-sm w-fit ${isVerified ? 'bg-green-50 border-green-100 text-green-700' : 'bg-amber-50 border-amber-100 text-amber-700'
                     }`}>
-                    <span className={`w-2 h-2 rounded-full ${profile?.kyc_status === 'verified' ? 'bg-green-500' : 'bg-amber-500 animate-pulse'}`}></span>
-                    KYC: {profile?.kyc_status?.toUpperCase() || 'PENDING'}
+                    <div className={`w-2 h-2 rounded-full ${isVerified ? 'bg-green-500 animate-pulse' : 'bg-amber-500'}`}></div>
+                    <span className="text-[10px] font-black uppercase tracking-widest">
+                        KYC: {profile?.kyc_status?.toUpperCase() || 'PENDING'}
+                    </span>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                {/* Left: Security Summary */}
-                <div className="md:col-span-1 space-y-6">
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                        <div className="flex flex-col items-center text-center">
-                            <div className="w-24 h-24 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center text-4xl font-bold mb-4">
-                                {profile?.name?.charAt(0)}
-                            </div>
-                            <h2 className="text-xl font-bold text-slate-900">{profile?.name}</h2>
-                            <p className="text-slate-500 text-sm mb-4">{profile?.email}</p>
-                            <div className="w-full h-px bg-slate-100 my-4"></div>
-                            <div className="w-full text-left space-y-3">
-                                <div className="flex items-center justify-between text-sm">
-                                    <span className="text-slate-500">Security Level</span>
-                                    <span className="font-semibold text-green-600">High</span>
-                                </div>
-                                <div className="flex items-center justify-between text-sm">
-                                    <span className="text-slate-500">2FA Status</span>
-                                    <span className="font-semibold text-slate-700">Enabled</span>
+            <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden p-6 md:p-10 transition-all hover:border-gray-300">
+                <form onSubmit={handleSubmit} className="space-y-10">
+                    {/* Feedback Messages */}
+                    {error && (
+                        <div className="p-4 bg-red-50 border border-red-100 text-red-600 rounded-xl text-xs font-bold italic animate-in fade-in slide-in-from-top-2">
+                            {error}
+                        </div>
+                    )}
+                    {success && (
+                        <div className="p-4 bg-green-50 border border-green-100 text-green-600 rounded-xl text-xs font-bold italic animate-in fade-in slide-in-from-top-2">
+                            {success}
+                        </div>
+                    )}
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                        {/* Name Field */}
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Legal Full Name</label>
+                            <input
+                                type="text"
+                                value={formData.name}
+                                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                placeholder="Your full name"
+                                className="w-full border-gray-200 rounded-xl bg-gray-50 p-4 text-sm font-bold text-gray-800 focus:ring-1 focus:ring-[#0B3D91] focus:bg-white transition-all outline-none"
+                                required
+                            />
+                        </div>
+
+                        {/* Email Field (Readonly) */}
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Corporate Email (Readonly)</label>
+                            <div className="relative group">
+                                <input
+                                    type="email"
+                                    value={profile?.email || ""}
+                                    readOnly
+                                    className="w-full border-gray-100 rounded-xl bg-gray-50/50 p-4 text-sm font-bold text-gray-400 cursor-not-allowed border-dashed outline-none"
+                                />
+                                <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-gray-300"><rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                </div>
 
-                {/* Right: Profile Information Form */}
-                <div className="md:col-span-2">
-                    <div className="bg-white rounded-2xl shadow-sm border border-slate-100">
-                        <div className="p-6 border-b border-slate-100">
-                            <h3 className="text-lg font-bold text-slate-900">Personal Information</h3>
-                            <p className="text-slate-500 text-sm">Update your personal details and contact information.</p>
+                        {/* Phone Field */}
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Registered Phone Number</label>
+                            <input
+                                type="tel"
+                                value={formData.phone}
+                                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                                placeholder="+91 XXXXXXXXXX"
+                                className="w-full border-gray-200 rounded-xl bg-gray-50 p-4 text-sm font-bold text-gray-800 focus:ring-1 focus:ring-[#0B3D91] focus:bg-white transition-all outline-none"
+                            />
                         </div>
 
-                        <form onSubmit={handleUpdate} className="p-6 space-y-6">
-                            {error && <div className="p-4 bg-red-50 text-red-600 rounded-xl text-sm border border-red-100">{error}</div>}
-                            {success && <div className="p-4 bg-green-50 text-green-600 rounded-xl text-sm border border-green-100">{success}</div>}
-
-                            <div className="grid grid-cols-1 gap-6">
-                                <div>
-                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Display Name</label>
-                                    <input
-                                        type="text"
-                                        value={formData.name}
-                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                                        placeholder="Enter full name"
-                                        required
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Phone Number</label>
-                                    <input
-                                        type="tel"
-                                        value={formData.phone}
-                                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                                        placeholder="+1 (555) 000-0000"
-                                        required
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Email Address</label>
-                                    <input
-                                        type="email"
-                                        value={profile?.email}
-                                        disabled
-                                        className="w-full px-4 py-3 bg-slate-100 border border-slate-200 rounded-xl text-slate-500 cursor-not-allowed"
-                                    />
-                                    <p className="mt-2 text-xs text-slate-400">Email address cannot be changed for security reasons.</p>
-                                </div>
+                        {/* Security Info Card */}
+                        <div className="flex items-start space-x-4 p-6 bg-blue-50/30 rounded-2xl border border-blue-50">
+                            <div className="mt-0.5 p-2 bg-white rounded-lg border border-blue-100 text-[#0B3D91] shadow-sm flex-shrink-0">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></svg>
                             </div>
-
-                            <div className="flex justify-end pt-4">
-                                <button
-                                    type="submit"
-                                    className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-200 transition-all transform active:scale-95"
-                                >
-                                    Save Changes
-                                </button>
-                            </div>
-                        </form>
+                            <p className="text-[11px] text-[#0B3D91]/80 font-medium leading-relaxed">
+                                <strong>Data Sensitivity:</strong> Your corporate identifiers are immutable for audit compliance. Please contact support to initiate a formal verification for any changes to your primary email.
+                            </p>
+                        </div>
                     </div>
-                </div>
+
+                    <div className="pt-6 border-t border-gray-50">
+                        <button
+                            type="submit"
+                            disabled={updating}
+                            className="bg-[#0B3D91] text-white px-10 py-4 rounded-xl text-xs font-black uppercase tracking-[0.2em] shadow-lg shadow-blue-900/10 hover:bg-[#0a3582] active:scale-[0.98] transition-all disabled:opacity-50"
+                        >
+                            {updating ? "UPDATING PORTFOLIO..." : "UPDATE PROFILE"}
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            {/* Access Audit */}
+            <div className="mt-16 text-center">
+                <p className="text-[10px] text-gray-400 font-black uppercase tracking-[0.3em]">
+                    Digital Footprint Activity Audit
+                </p>
+                <p className="text-[10px] text-gray-300 font-bold mt-1">
+                    Last Modified: {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                </p>
             </div>
         </div>
     );
-};
-
-export default Profile;
+}
