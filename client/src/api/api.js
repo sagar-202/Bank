@@ -53,3 +53,27 @@ export const addBalance = async (amount) => {
     if (!res.ok) throw new Error(data.error || "Failed to add balance");
     return data;
 };
+
+export const withdraw = async (amount) => {
+    const res = await fetch(`${BASE_URL}/api/withdraw`, options("POST", { amount }));
+    const data = await res.json();
+    if (handle401(res.status)) return;
+    if (!res.ok) throw new Error(data.error || "Failed to withdraw");
+    return data;
+};
+
+export const fetchTransactions = async () => {
+    const res = await fetch(`${BASE_URL}/api/transactions`, options("GET"));
+    const data = await res.json();
+    if (handle401(res.status)) return;
+    if (!res.ok) throw new Error(data.error || "Failed to fetch transactions");
+    return data;
+};
+
+export const transfer = async (toEmail, amount) => {
+    const res = await fetch(`${BASE_URL}/api/transfer`, options("POST", { toEmail, amount }));
+    const data = await res.json();
+    if (handle401(res.status)) return;
+    if (!res.ok) throw new Error(data.error || "Failed to transfer");
+    return data;
+};

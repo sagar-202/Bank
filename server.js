@@ -4,12 +4,62 @@ const cookieParser = require("cookie-parser");
 const cors = require("cors");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const rateLimit = require("express-rate-limit");
+const { body, validationResult } = require("express-validator");
 
 const pool = require("./config/db");
 const authMiddleware = require("./middleware/authMiddleware");
+const errorHandler = require("./middleware/errorHandler");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// ─── Security Helpers ─────────────────────────────────────────────────────────
+const loginLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 5, // limit each IP to 5 requests per windowMs
+  message: { error: "Too many login attempts, please try again after a minute" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const validate = (validations) => {
+  return async (req, res, next) => {
+    for (let validation of validations) {
+      const result = await validation.run(req);
+      if (result.errors.length) break;
+    }
+
+    const errors = validationResult(req);
+    if (errors.isEmpty()) {
+      return next();
+    }
+
+    res.status(400).json({ error: errors.array()[0].msg });
+  };
+};
+
+const registerValidation = [
+  body("name").trim().notEmpty().withMessage("Name is required"),
+  body("email").isEmail().withMessage("Invalid email format").normalizeEmail(),
+  body("password").isLength({ min: 6 }).withMessage("Password must be at least 6 characters"),
+];
+
+const loginValidation = [
+  body("email").isEmail().withMessage("Invalid email format").normalizeEmail(),
+  body("password").notEmpty().withMessage("Password is required"),
+];
+
+const amountValidation = [
+  body("amount")
+    .isNumeric().withMessage("Amount must be a number")
+    .custom((val) => Number(val) > 0).withMessage("Amount must be positive"),
+];
+
+const transferValidation = [
+  body("toEmail").isEmail().withMessage("Invalid recipient email").normalizeEmail(),
+  ...amountValidation,
+];
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 app.use(cors({
@@ -32,12 +82,8 @@ app.get("/health", (req, res) => {
 });
 
 // ─── Register ─────────────────────────────────────────────────────────────────
-app.post("/api/register", async (req, res) => {
+app.post("/api/register", validate(registerValidation), async (req, res, next) => {
   const { name, email, password } = req.body;
-
-  if (!name || !email || !password) {
-    return res.status(400).json({ message: "name, email and password are required" });
-  }
 
   try {
     const password_hash = await bcrypt.hash(password, 10);
@@ -48,19 +94,15 @@ app.post("/api/register", async (req, res) => {
     res.status(201).json({ message: "User created" });
   } catch (err) {
     if (err.code === "23505") {
-      return res.status(409).json({ message: "Email already registered" });
+      return res.status(409).json({ error: "Email already registered" });
     }
-    res.status(500).json({ message: "Internal server error" });
+    next(err);
   }
 });
 
 // ─── Login ────────────────────────────────────────────────────────────────────
-app.post("/api/login", async (req, res) => {
+app.post("/api/login", loginLimiter, validate(loginValidation), async (req, res, next) => {
   const { email, password } = req.body;
-
-  if (!email || !password) {
-    return res.status(400).json({ message: "email and password are required" });
-  }
 
   try {
     const result = await pool.query("SELECT * FROM bank_user WHERE email = $1", [email]);
@@ -70,7 +112,7 @@ app.post("/api/login", async (req, res) => {
     await pool.query("DELETE FROM bank_user_jwt WHERE expires_at < NOW()");
 
     if (!user || !(await bcrypt.compare(password, user.password_hash))) {
-      return res.status(401).json({ message: "Invalid email or password" });
+      return res.status(401).json({ error: "Invalid email or password" });
     }
 
     const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET || "default_dev_secret", { expiresIn: "15m" });
@@ -94,12 +136,12 @@ app.post("/api/login", async (req, res) => {
     res.json({ message: "Login successful" });
   } catch (err) {
     console.error("Login error:", err);
-    res.status(500).json({ message: "Internal server error" });
+    next(err);
   }
 });
 
 // ─── Logout ───────────────────────────────────────────────────────────────────
-app.post("/api/logout", async (req, res) => {
+app.post("/api/logout", async (req, res, next) => {
   const token = req.cookies.access_token;
 
   // Always clear cookie
@@ -128,23 +170,19 @@ app.post("/api/logout", async (req, res) => {
 });
 
 // ─── Check Balance ────────────────────────────────────────────────────────────
-app.get("/api/check-balance", authMiddleware, async (req, res) => {
+app.get("/api/check-balance", authMiddleware, async (req, res, next) => {
   try {
     const result = await pool.query("SELECT balance FROM bank_user WHERE id = $1", [req.user.userId]);
     if (result.rows.length === 0) return res.status(404).json({ error: "User not found" });
     res.json({ balance: result.rows[0].balance });
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    next(err);
   }
 });
 
 // ─── Add Balance ──────────────────────────────────────────────────────────────
-app.post("/api/add-balance", authMiddleware, async (req, res) => {
+app.post("/api/add-balance", authMiddleware, validate(amountValidation), async (req, res, next) => {
   const { amount } = req.body;
-
-  if (!amount || isNaN(amount) || Number(amount) <= 0) {
-    return res.status(400).json({ error: "amount must be a positive number" });
-  }
 
   try {
     const result = await pool.query(
@@ -154,9 +192,141 @@ app.post("/api/add-balance", authMiddleware, async (req, res) => {
     if (result.rows.length === 0) return res.status(404).json({ error: "User not found" });
     res.json({ message: "Balance updated successfully", balance: result.rows[0].balance });
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    next(err);
   }
 });
+
+// ─── Withdraw Balance ──────────────────────────────────────────────────────────
+app.post("/api/withdraw", authMiddleware, validate(amountValidation), async (req, res, next) => {
+  const { amount } = req.body;
+  const userId = req.user.userId;
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    // Fetch user balance with lock
+    const userRes = await client.query("SELECT balance FROM bank_user WHERE id = $1 FOR UPDATE", [userId]);
+    if (userRes.rows.length === 0) {
+      throw new Error("User not found");
+    }
+
+    const currentBalance = parseFloat(userRes.rows[0].balance);
+    if (currentBalance < amount) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "Insufficient funds" });
+    }
+
+    // Deduct balance
+    const updateRes = await client.query(
+      "UPDATE bank_user SET balance = balance - $1 WHERE id = $2 RETURNING balance",
+      [amount, userId]
+    );
+
+    // Insert transaction record
+    await client.query(
+      "INSERT INTO transactions (user_id, type, amount) VALUES ($1, 'withdraw', $2)",
+      [userId, amount]
+    );
+
+    await client.query("COMMIT");
+    res.json({ message: "Withdrawal successful", balance: updateRes.rows[0].balance });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    if (err.message === "User not found") {
+      return res.status(404).json({ error: "User not found" });
+    }
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
+// ─── Transfer Funds ───────────────────────────────────────────────────────────
+app.post("/api/transfer", authMiddleware, validate(transferValidation), async (req, res, next) => {
+  const { toEmail, amount } = req.body;
+  const senderId = req.user.userId;
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    // 1. Fetch and lock sender
+    const senderRes = await client.query("SELECT balance, email FROM bank_user WHERE id = $1 FOR UPDATE", [senderId]);
+    if (senderRes.rows.length === 0) throw new Error("Sender not found");
+
+    if (senderRes.rows[0].email === toEmail) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "Cannot transfer to yourself" });
+    }
+
+    // 2. Fetch and lock recipient
+    const recipientRes = await client.query("SELECT id FROM bank_user WHERE email = $1 FOR UPDATE", [toEmail]);
+    if (recipientRes.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Recipient not found" });
+    }
+    const recipientId = recipientRes.rows[0].id;
+
+    // 3. Check balance
+    const senderBalance = parseFloat(senderRes.rows[0].balance);
+    if (senderBalance < amount) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "Insufficient funds" });
+    }
+
+    // 4. Update balances
+    const updateSenderRes = await client.query(
+      "UPDATE bank_user SET balance = balance - $1 WHERE id = $2 RETURNING balance",
+      [amount, senderId]
+    );
+    await client.query("UPDATE bank_user SET balance = balance + $1 WHERE id = $2", [amount, recipientId]);
+
+    // 5. Insert transaction records
+    // Sender record
+    await client.query(
+      "INSERT INTO transactions (user_id, type, amount, related_user_id) VALUES ($1, 'transfer', $2, $3)",
+      [senderId, amount, recipientId]
+    );
+    // Recipient record (records as deposit from sender)
+    await client.query(
+      "INSERT INTO transactions (user_id, type, amount, related_user_id) VALUES ($1, 'deposit', $2, $3)",
+      [recipientId, amount, senderId]
+    );
+
+    await client.query("COMMIT");
+    res.json({ message: "Transfer successful", balance: updateSenderRes.rows[0].balance });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
+// ─── Transaction History ──────────────────────────────────────────────────────
+app.get("/api/transactions", authMiddleware, async (req, res, next) => {
+  const userId = req.user.userId;
+
+  try {
+    const result = await pool.query(
+      `SELECT id, type, amount, related_user_id, created_at 
+       FROM transactions 
+       WHERE user_id = $1 
+       ORDER BY created_at DESC 
+       LIMIT 20`,
+      [userId]
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.use(errorHandler);
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 if (require.main === module) {
