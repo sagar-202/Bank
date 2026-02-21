@@ -847,68 +847,108 @@ if (require.main === module) {
   });
 }
 
-// ─── AI Chatbot Route ─────────────────────────────────────────────────────────
-const HF_SPACE_URL = process.env.HF_SPACE_URL || "https://sagar2080-vibebank-assistant.hf.space";
+// ─── AI Chatbot Route (Direct HF Inference API) ───────────────────────────────
+const HF_INFERENCE_URL = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2";
+
+const BANKING_SYSTEM_PROMPT = `You are VibeBank's professional AI banking assistant.
+Rules:
+- Answer banking questions clearly and professionally in 2-4 sentences
+- NEVER claim to execute real transactions or account changes
+- NEVER provide financial investment advice
+- NEVER ask for passwords, PINs, or OTPs
+- If you cannot help, politely redirect to the VibeBank portal`;
 
 app.post("/api/chatbot", authMiddleware, async (req, res) => {
   const { message, context } = req.body;
 
   console.log("[chatbot] Incoming message:", message);
 
-  if (!message || typeof message !== "string") {
-    return res.status(400).json({ error: "message is required and must be a string" });
+  if (!message || typeof message !== "string" || message.trim().length === 0) {
+    return res.status(400).json({ error: "message is required" });
   }
-  if (message.trim().length === 0 || message.length > 1000) {
-    return res.status(400).json({ error: "message must be between 1 and 1000 characters" });
+  if (message.length > 1000) {
+    return res.status(400).json({ error: "message too long (max 1000 chars)" });
   }
+
+  const HF_API_TOKEN = process.env.HF_API_TOKEN;
+  if (!HF_API_TOKEN) {
+    console.error("[chatbot] HF_API_TOKEN not set in .env");
+    return res.status(500).json({ error: "AI service not configured" });
+  }
+
+  // Build system prompt with optional account context
+  let systemPrompt = BANKING_SYSTEM_PROMPT;
+  if (context) {
+    const parts = [];
+    if (context.accountCount != null) parts.push(`- Active Accounts: ${context.accountCount}`);
+    if (context.totalBalance != null) parts.push(`- Total Balance: ₹${Number(context.totalBalance).toFixed(2)}`);
+    if (context.dailyLimit != null) parts.push(`- Daily Transfer Limit: ₹${Number(context.dailyLimit).toFixed(2)}`);
+    if (parts.length) systemPrompt += `\n\nUser Account Context (read-only):\n${parts.join("\n")}`;
+  }
+
+  // Mistral instruct format
+  const prompt = `<s>[INST] <<SYS>>\n${systemPrompt}\n<</SYS>>\n\n${message.trim()} [/INST]`;
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
+  const timeout = setTimeout(() => controller.abort(), 30000);
 
   try {
-    const hfUrl = `${HF_SPACE_URL}/chat`;
-    console.log("[chatbot] Calling HF Space:", hfUrl);
+    console.log("[chatbot] Calling HF Inference API...");
 
-    const response = await fetch(hfUrl, {
+    const response = await fetch(HF_INFERENCE_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Authorization": `Bearer ${HF_API_TOKEN}`,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
-        message: message.trim(),
-        context: context || undefined,
+        inputs: prompt,
+        parameters: {
+          max_new_tokens: 200,
+          temperature: 0.7,
+          top_p: 0.9,
+          do_sample: true,
+          return_full_text: false,
+        },
       }),
       signal: controller.signal,
     });
 
     clearTimeout(timeout);
-
     console.log("[chatbot] HF response status:", response.status);
 
     const rawBody = await response.text();
-    console.log("[chatbot] HF response body:", rawBody);
+    console.log("[chatbot] HF response body:", rawBody.substring(0, 300));
+
+    // Model still loading
+    if (response.status === 503) {
+      return res.status(503).json({ error: "AI model is warming up. Please try again in 20 seconds." });
+    }
 
     if (!response.ok) {
-      return res.status(502).json({
-        error: "AI service error",
-        details: response.status,
-      });
+      return res.status(502).json({ error: "AI service error", details: response.status });
     }
 
     let data;
-    try {
-      data = JSON.parse(rawBody);
-    } catch {
-      console.error("[chatbot] Failed to parse HF JSON:", rawBody);
+    try { data = JSON.parse(rawBody); } catch {
+      console.error("[chatbot] Failed to parse JSON:", rawBody);
       return res.status(502).json({ error: "AI service error", details: "invalid_json" });
     }
 
-    return res.json({ reply: data.reply || "No response from assistant." });
+    let reply = "";
+    if (Array.isArray(data) && data.length > 0) {
+      reply = data[0]?.generated_text?.trim() || "";
+    } else if (data?.generated_text) {
+      reply = data.generated_text.trim();
+    }
+
+    if (!reply) reply = "I'm sorry, I couldn't generate a response. Please rephrase your question.";
+
+    return res.json({ reply });
 
   } catch (err) {
     clearTimeout(timeout);
-    console.error("[chatbot] Error name:", err.name);
-    console.error("[chatbot] Error message:", err.message);
-    console.error("[chatbot] Full stack:", err.stack);
-
+    console.error("[chatbot] Error:", err.name, err.message);
     if (err.name === "AbortError") {
       return res.status(504).json({ error: "AI service timed out. Please try again." });
     }
@@ -917,3 +957,4 @@ app.post("/api/chatbot", authMiddleware, async (req, res) => {
 });
 
 module.exports = app;
+
