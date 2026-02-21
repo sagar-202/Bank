@@ -77,3 +77,67 @@ export const transfer = async (toEmail, amount) => {
     if (!res.ok) throw new Error(data.error || "Failed to transfer");
     return data;
 };
+
+export const fetchAccounts = async () => {
+    const res = await fetch(`${BASE_URL}/api/accounts`, options("GET"));
+    const data = await res.json();
+    if (handle401(res.status)) return;
+    if (!res.ok) throw new Error(data.error || "Failed to fetch accounts");
+    return data;
+};
+
+export const createAccount = async (account_type) => {
+    const res = await fetch(`${BASE_URL}/api/accounts`, options("POST", { account_type }));
+    const data = await res.json();
+    if (handle401(res.status)) return;
+    if (!res.ok) throw new Error(data.error || "Failed to create account");
+    return data;
+};
+
+export const internalTransfer = async (fromAccountId, toAccountId, amount) => {
+    const res = await fetch(`${BASE_URL}/api/transfer/internal`, options("POST", { fromAccountId, toAccountId, amount }));
+    const data = await res.json();
+    if (handle401(res.status)) return;
+    if (!res.ok) throw new Error(data.error || "Failed to perform internal transfer");
+    return data;
+};
+
+export const fetchBeneficiaries = async () => {
+    const res = await fetch(`${BASE_URL}/api/beneficiaries`, options("GET"));
+    const data = await res.json();
+    if (handle401(res.status)) return;
+    if (!res.ok) throw new Error(data.error || "Failed to fetch beneficiaries");
+    return data;
+};
+
+export const addBeneficiary = async (beneficiary_account_number, nickname) => {
+    const res = await fetch(`${BASE_URL}/api/beneficiaries`, options("POST", { beneficiary_account_number, nickname }));
+    const data = await res.json();
+    if (handle401(res.status)) return;
+    if (!res.ok) throw new Error(data.error || "Failed to add beneficiary");
+    return data;
+};
+
+export const externalTransfer = async (fromAccountId, beneficiaryId, amount, otp) => {
+    const res = await fetch(`${BASE_URL}/api/transfer/external`, options("POST", { fromAccountId, beneficiaryId, amount, otp }));
+    const data = await res.json();
+    if (handle401(res.status)) return;
+    if (!res.ok) throw new Error(data.error || "Failed to perform external transfer");
+    return data;
+};
+
+export const fetchProfile = async () => {
+    const res = await fetch(`${BASE_URL}/api/profile`, options("GET"));
+    const data = await res.json();
+    if (handle401(res.status)) return;
+    if (!res.ok) throw new Error(data.error || "Failed to fetch profile");
+    return data;
+};
+
+export const updateProfile = async (name, phone) => {
+    const res = await fetch(`${BASE_URL}/api/profile`, options("PUT", { name, phone }));
+    const data = await res.json();
+    if (handle401(res.status)) return;
+    if (!res.ok) throw new Error(data.error || "Failed to update profile");
+    return data;
+};

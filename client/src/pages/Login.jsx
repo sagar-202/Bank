@@ -15,7 +15,7 @@ export default function Login() {
         setLoading(true);
         try {
             await login(email, password);
-            navigate("/home");
+            navigate("/dashboard");
         } catch (err) {
             setError(err.message);
         } finally {
@@ -27,7 +27,7 @@ export default function Login() {
         <div className="flex min-h-screen items-center justify-center bg-gray-100 px-4">
             <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-lg">
                 <div className="mb-8 text-center">
-                    <h1 className="text-3xl font-bold text-gray-900">KodBank</h1>
+                    <h1 className="text-3xl font-bold text-[#0B3D91]">VibeBank</h1>
                     <p className="mt-2 text-sm text-gray-500">Welcome back</p>
                 </div>
 
