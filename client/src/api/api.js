@@ -141,3 +141,11 @@ export const updateProfile = async (name, phone) => {
     if (!res.ok) throw new Error(data.error || "Failed to update profile");
     return data;
 };
+
+export const fetchAccountTransactions = async (accountId) => {
+    const res = await fetch(`${BASE_URL}/api/accounts/${accountId}/transactions`, options("GET"));
+    const data = await res.json();
+    if (handle401(res.status)) return;
+    if (!res.ok) throw new Error(data.error || "Failed to fetch account transactions");
+    return data;
+};

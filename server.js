@@ -277,17 +277,45 @@ app.post("/api/accounts", authMiddleware, async (req, res, next) => {
 
 // ─── Add Balance ──────────────────────────────────────────────────────────────
 app.post("/api/add-balance", authMiddleware, validate(amountValidation), async (req, res, next) => {
-  const { amount } = req.body;
+  const { amount, accountId } = req.body;
+  const userId = req.user.userId;
 
+  const client = await pool.connect();
   try {
-    const result = await pool.query(
-      "UPDATE bank_user SET balance = balance + $1 WHERE id = $2 RETURNING balance",
-      [amount, req.user.userId]
+    await client.query("BEGIN");
+
+    // 1. Determine account (provided or default)
+    let targetAccountId = accountId;
+    if (!targetAccountId) {
+      const accRes = await client.query("SELECT id FROM accounts WHERE user_id = $1 ORDER BY created_at ASC LIMIT 1", [userId]);
+      if (accRes.rows.length === 0) throw new Error("No accounts found for user");
+      targetAccountId = accRes.rows[0].id;
+    }
+
+    // 2. Update user balance (legacy)
+    await client.query("UPDATE bank_user SET balance = balance + $1 WHERE id = $2", [amount, userId]);
+
+    // 3. Update account balance
+    const result = await client.query(
+      "UPDATE accounts SET balance = balance + $1 WHERE id = $2 AND user_id = $3 RETURNING balance",
+      [amount, targetAccountId, userId]
     );
-    if (result.rows.length === 0) return res.status(404).json({ error: "User not found" });
+
+    if (result.rows.length === 0) throw new Error("Account not found or unauthorized");
+
+    // 4. Record transaction with account_id
+    await client.query(
+      "INSERT INTO transactions (user_id, account_id, type, amount) VALUES ($1, $2, 'deposit', $3)",
+      [userId, targetAccountId, amount]
+    );
+
+    await client.query("COMMIT");
     res.json({ message: "Balance updated successfully", balance: result.rows[0].balance });
   } catch (err) {
+    await client.query("ROLLBACK");
     next(err);
+  } finally {
+    client.release();
   }
 });
 
@@ -314,15 +342,26 @@ app.post("/api/withdraw", authMiddleware, validate(amountValidation), async (req
     }
 
     // Deduct balance
+    // 1. Determine account (provided or default)
+    const { accountId } = req.body;
+    let targetAccountId = accountId;
+    if (!targetAccountId) {
+      const accRes = await client.query("SELECT id FROM accounts WHERE user_id = $1 ORDER BY created_at ASC LIMIT 1", [userId]);
+      if (accRes.rows.length === 0) throw new Error("No accounts found for user");
+      targetAccountId = accRes.rows[0].id;
+    }
+
+    await client.query("UPDATE bank_user SET balance = balance - $1 WHERE id = $2", [amount, userId]);
+
     const updateRes = await client.query(
-      "UPDATE bank_user SET balance = balance - $1 WHERE id = $2 RETURNING balance",
-      [amount, userId]
+      "UPDATE accounts SET balance = balance - $1 WHERE id = $2 AND user_id = $3 RETURNING balance",
+      [amount, targetAccountId, userId]
     );
 
-    // Insert transaction record
+    // Insert transaction record with account_id
     await client.query(
-      "INSERT INTO transactions (user_id, type, amount) VALUES ($1, 'withdraw', $2)",
-      [userId, amount]
+      "INSERT INTO transactions (user_id, account_id, type, amount) VALUES ($1, $2, 'withdraw', $3)",
+      [userId, targetAccountId, amount]
     );
 
     await client.query("COMMIT");
@@ -376,22 +415,36 @@ app.post("/api/transfer", authMiddleware, validate(transferValidation), async (r
     }
 
     // 4. Update balances
+    // For legacy /api/transfer, we use the default accounts
+    const senderAccRes = await client.query("SELECT id FROM accounts WHERE user_id = $1 ORDER BY created_at ASC LIMIT 1", [senderId]);
+    const recipientAccRes = await client.query("SELECT id FROM accounts WHERE user_id = $1 ORDER BY created_at ASC LIMIT 1", [recipientId]);
+
+    if (senderAccRes.rows.length === 0 || recipientAccRes.rows.length === 0) {
+      throw new Error("Sender or recipient has no accounts");
+    }
+
+    const senderAccountId = senderAccRes.rows[0].id;
+    const recipientAccountId = recipientAccRes.rows[0].id;
+
     const updateSenderRes = await client.query(
       "UPDATE bank_user SET balance = balance - $1 WHERE id = $2 RETURNING balance",
       [amount, senderId]
     );
     await client.query("UPDATE bank_user SET balance = balance + $1 WHERE id = $2", [amount, recipientId]);
 
-    // 5. Insert transaction records
+    await client.query("UPDATE accounts SET balance = balance - $1 WHERE id = $2", [amount, senderAccountId]);
+    await client.query("UPDATE accounts SET balance = balance + $1 WHERE id = $2", [amount, recipientAccountId]);
+
+    // 5. Insert transaction records with account_id
     // Sender record
     await client.query(
-      "INSERT INTO transactions (user_id, type, amount, related_user_id) VALUES ($1, 'transfer', $2, $3)",
-      [senderId, amount, recipientId]
+      "INSERT INTO transactions (user_id, account_id, type, amount, related_user_id) VALUES ($1, $2, 'transfer', $3, $4)",
+      [senderId, senderAccountId, amount, recipientId]
     );
     // Recipient record (records as deposit from sender)
     await client.query(
-      "INSERT INTO transactions (user_id, type, amount, related_user_id) VALUES ($1, 'deposit', $2, $3)",
-      [recipientId, amount, senderId]
+      "INSERT INTO transactions (user_id, account_id, type, amount, related_user_id) VALUES ($1, $2, 'deposit', $3, $4)",
+      [recipientId, recipientAccountId, amount, senderId]
     );
 
     await client.query("COMMIT");
@@ -447,10 +500,14 @@ app.post("/api/transfer/internal", authMiddleware, async (req, res, next) => {
     await client.query("UPDATE accounts SET balance = balance - $1 WHERE id = $2", [amount, fromAccountId]);
     await client.query("UPDATE accounts SET balance = balance + $1 WHERE id = $2", [amount, toAccountId]);
 
-    // 4. Record transaction (audit log)
+    // 4. Record transaction (audit log) with account_id
     await client.query(
-      "INSERT INTO transactions (user_id, type, amount) VALUES ($1, 'transfer', $2)",
-      [userId, amount]
+      "INSERT INTO transactions (user_id, account_id, type, amount) VALUES ($1, $2, 'transfer', $3)",
+      [userId, fromAccountId, amount]
+    );
+    await client.query(
+      "INSERT INTO transactions (user_id, account_id, type, amount) VALUES ($1, $2, 'deposit', $3)",
+      [userId, toAccountId, amount]
     );
 
     await client.query("COMMIT");
@@ -544,10 +601,10 @@ app.post("/api/transfer/external", authMiddleware, async (req, res, next) => {
     // 3. Deduct from source account
     await client.query("UPDATE accounts SET balance = balance - $1 WHERE id = $2", [amount, fromAccountId]);
 
-    // 4. Record transaction
+    // 4. Record transaction with account_id
     await client.query(
-      "INSERT INTO transactions (user_id, type, amount) VALUES ($1, 'transfer', $2)",
-      [userId, amount]
+      "INSERT INTO transactions (user_id, account_id, type, amount) VALUES ($1, $2, 'transfer', $3)",
+      [userId, fromAccountId, amount]
     );
 
     await client.query("COMMIT");
@@ -605,12 +662,32 @@ app.get("/api/transactions", authMiddleware, async (req, res, next) => {
 
   try {
     const result = await pool.query(
-      `SELECT id, type, amount, related_user_id, created_at 
+      `SELECT id, type, amount, related_user_id, account_id, created_at 
        FROM transactions 
        WHERE user_id = $1 
        ORDER BY created_at DESC 
        LIMIT 20`,
       [userId]
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/api/accounts/:id/transactions", authMiddleware, async (req, res, next) => {
+  const userId = req.user.userId;
+  const accountId = req.params.id;
+
+  try {
+    const result = await pool.query(
+      `SELECT id, type, amount, related_user_id, created_at 
+       FROM transactions 
+       WHERE user_id = $1 AND account_id = $2
+       ORDER BY created_at DESC 
+       LIMIT 5`,
+      [userId, accountId]
     );
 
     res.json(result.rows);
@@ -646,6 +723,30 @@ if (require.main === module) {
           created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS accounts (
+          id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+          user_id        INTEGER NOT NULL REFERENCES bank_user(id),
+          account_number VARCHAR(20) UNIQUE NOT NULL,
+          account_type   VARCHAR(20) NOT NULL,
+          balance        NUMERIC(15,2) DEFAULT 0.00,
+          status         VARCHAR(20) DEFAULT 'active',
+          created_at     TIMESTAMP DEFAULT NOW()
+        )
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS transactions (
+          id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+          user_id         INTEGER NOT NULL REFERENCES bank_user(id),
+          account_id      UUID REFERENCES accounts(id),
+          type            VARCHAR(20) NOT NULL CHECK (type IN ('deposit', 'withdraw', 'transfer')),
+          amount          NUMERIC(15,2) NOT NULL,
+          related_user_id INTEGER REFERENCES bank_user(id),
+          created_at      TIMESTAMP DEFAULT NOW()
+        )
+      `);
+      // Update historical transactions if they don't have account_id
+      await pool.query("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS account_id UUID REFERENCES accounts(id)");
       console.log("Tables ready");
     } catch (err) {
       console.error("Startup error:", err.message);
