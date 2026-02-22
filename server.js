@@ -847,17 +847,8 @@ if (require.main === module) {
   });
 }
 
-// ─── AI Chatbot Route (Groq API — free, OpenAI-compatible) ───────────────────
-// Groq: free tier, no credit card, 30 req/min, 200 tok/s
-const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
-
-const BANKING_SYSTEM_PROMPT = `You are VibeBank's professional AI banking assistant.
-Rules:
-- Answer banking questions clearly and professionally in 2-4 sentences
-- NEVER claim to execute real transactions or account changes
-- NEVER provide financial investment advice
-- NEVER ask for passwords, PINs, or OTPs
-- If you cannot help, politely redirect to the VibeBank portal`;
+// ─── AI Chatbot Route (HF Space proxy) ───────────────────────────────────────
+const HF_SPACE_URL = process.env.HF_SPACE_URL || "https://sagar2080-vibebank-assistant.hf.space";
 
 app.post("/api/chatbot", authMiddleware, async (req, res) => {
   const { message, context } = req.body;
@@ -871,80 +862,49 @@ app.post("/api/chatbot", authMiddleware, async (req, res) => {
     return res.status(400).json({ error: "message too long (max 1000 chars)" });
   }
 
-  const GROQ_API_KEY = process.env.GROQ_API_KEY;
-  if (!GROQ_API_KEY) {
-    console.error("[chatbot] GROQ_API_KEY not set in .env");
-    return res.status(500).json({ error: "AI service not configured" });
-  }
-
-  // Build system prompt with optional account context
-  let systemPrompt = BANKING_SYSTEM_PROMPT;
-  if (context) {
-    const parts = [];
-    if (context.accountCount != null) parts.push(`- Active Accounts: ${context.accountCount}`);
-    if (context.totalBalance != null) parts.push(`- Total Balance: ₹${Number(context.totalBalance).toFixed(2)}`);
-    if (context.dailyLimit != null) parts.push(`- Daily Transfer Limit: ₹${Number(context.dailyLimit).toFixed(2)}`);
-    if (parts.length) systemPrompt += `\n\nUser Account Context (read-only):\n${parts.join("\n")}`;
-  }
-
-  // Build messages array (OpenAI-compatible format required by new HF router)
-  const messages = [
-    { role: "system", content: systemPrompt },
-    { role: "user", content: message.trim() },
-  ];
-
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30000);
 
   try {
-    console.log("[chatbot] Calling Groq API...");
+    const hfUrl = `${HF_SPACE_URL}/chat`;
+    console.log("[chatbot] Calling HF Space:", hfUrl);
 
-    const response = await fetch(GROQ_API_URL, {
+    const response = await fetch(hfUrl, {
       method: "POST",
-      headers: {
-        "Authorization": `Bearer ${GROQ_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "llama-3.1-8b-instant",
-        messages,
-        max_tokens: 200,
-        temperature: 0.7,
-        stream: false,
-      }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: message.trim(), context: context || undefined }),
       signal: controller.signal,
     });
 
     clearTimeout(timeout);
-    console.log("[chatbot] HF response status:", response.status);
+    console.log("[chatbot] HF Space response status:", response.status);
 
     const rawBody = await response.text();
-    console.log("[chatbot] HF response body:", rawBody.substring(0, 300));
+    console.log("[chatbot] HF Space response body:", rawBody.substring(0, 300));
 
-    // Model still loading
     if (response.status === 503) {
       return res.status(503).json({ error: "AI model is warming up. Please try again in 20 seconds." });
     }
 
     if (!response.ok) {
+      console.error("[chatbot] HF Space error:", response.status, rawBody);
       return res.status(502).json({ error: "AI service error", details: response.status });
     }
 
     let data;
-    try { data = JSON.parse(rawBody); } catch {
-      console.error("[chatbot] Failed to parse JSON:", rawBody);
+    try {
+      data = JSON.parse(rawBody);
+    } catch {
+      console.error("[chatbot] Failed to parse HF Space JSON:", rawBody);
       return res.status(502).json({ error: "AI service error", details: "invalid_json" });
     }
 
-    // OpenAI-compatible response format: choices[0].message.content
-    const reply = data?.choices?.[0]?.message?.content?.trim()
-      || "I'm sorry, I couldn't generate a response. Please rephrase your question.";
-
-    return res.json({ reply });
+    return res.json({ reply: data.reply || "I'm sorry, I couldn't generate a response." });
 
   } catch (err) {
     clearTimeout(timeout);
-    console.error("[chatbot] Error:", err.name, err.message);
+    console.error("[chatbot] Error name:", err.name);
+    console.error("[chatbot] Error message:", err.message);
     if (err.name === "AbortError") {
       return res.status(504).json({ error: "AI service timed out. Please try again." });
     }
