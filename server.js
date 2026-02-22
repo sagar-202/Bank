@@ -14,6 +14,13 @@ const errorHandler = require("./middleware/errorHandler");
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+app.use(cors({
+  origin: process.env.FRONTEND_URL || "http://localhost:5173",
+  credentials: true
+}));
+app.use(express.json());
+app.use(cookieParser());
+
 // ─── Security Helpers ─────────────────────────────────────────────────────────
 const loginLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
@@ -78,20 +85,7 @@ const checkDailyLimit = async (userId, currentAmount) => {
   }
 };
 
-// ─── Middleware ───────────────────────────────────────────────────────────────
-app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    if (origin.startsWith("http://localhost") || origin.includes("vercel.app")) {
-      return callback(null, true);
-    }
-    callback(new Error("Not allowed by CORS"));
-  },
-  credentials: true,
-}));
-app.use(express.json());
-app.use(cookieParser());
+// ─── Middleware// Middleware (CORS and JSON moved to top)
 
 // ─── Health ───────────────────────────────────────────────────────────────────
 app.get("/health", (req, res) => {
@@ -848,63 +842,46 @@ if (require.main === module) {
 }
 
 // ─── AI Chatbot Route (HF Space proxy) ───────────────────────────────────────
-app.post("/api/chatbot", authMiddleware, async (req, res) => {
+app.post("/api/chatbot", async (req, res) => {
   try {
-    const { message, context } = req.body;
+    const { message } = req.body;
+    console.log("Incoming message:", message);
 
-    if (!message || typeof message !== "string" || message.trim().length === 0) {
-      return res.status(400).json({ error: "message is required" });
-    }
-
-    const payload = {
-      message: message.trim(),
-      context: context ? {
-        totalBalance: context.totalBalance,
-        accountCount: context.accountCount,
-        dailyLimit: context.dailyLimit
-      } : undefined
-    };
-
-    console.log("Sending to HF:", JSON.stringify(payload, null, 2));
-
-    const response = await fetch("https://sagar2080-vibebank-assistant.hf.space/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    const response = await fetch(
+      (process.env.HF_SPACE_URL || "https://sagar2080-vibebank-assistant.hf.space") + "/chat",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${process.env.HF_API_TOKEN}`
+        },
+        body: JSON.stringify({ message })
+      }
+    );
 
     console.log("HF status:", response.status);
 
     const rawText = await response.text();
     console.log("HF raw text:", rawText);
 
-    if (response.status !== 200) {
-      return res.status(500).json({
-        error: "HF service error",
-        details: rawText
-      });
-    }
-
-    let data;
+    let parsed;
     try {
-      data = JSON.parse(rawText);
-    } catch (parseErr) {
-      console.error("Failed to parse HF JSON:", rawText);
-      return res.status(500).json({
-        error: "HF service error",
-        details: "invalid_json",
-        raw: rawText
-      });
+      parsed = JSON.parse(rawText);
+    } catch (e) {
+      console.error("Failed to parse HF JSON:", e);
+      return res.json({ reply: "Assistant temporarily unavailable." });
     }
 
-    return res.json({ reply: data.reply || "I'm sorry, I couldn't generate a response." });
+    // Attempt to find any valid reply content
+    const reply = parsed.reply || parsed.generated_text || parsed.raw || "No reply field in HF response";
+
+    console.log("Final reply to frontend:", reply);
+
+    return res.json({ reply });
 
   } catch (err) {
-    console.error("Chatbot backend error:", err);
-    return res.status(500).json({
-      error: "Backend error",
-      message: err.message
-    });
+    console.error("Chatbot backend crash:", err);
+    return res.json({ reply: "Backend crashed" });
   }
 });
 

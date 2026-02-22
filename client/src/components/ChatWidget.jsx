@@ -46,26 +46,30 @@ export default function ChatWidget() {
         setLoading(true);
 
         try {
-            const res = await fetch("/api/chatbot", {
+            const res = await fetch("http://localhost:5000/api/chatbot", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify({ message: text }),
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ message: text })
             });
 
             if (!res.ok) throw new Error("API error");
 
             const data = await res.json();
-            setMessages((prev) => [
+            setMessages(prev => [
                 ...prev,
-                { role: "assistant", text: data.reply || "I'm sorry, I could not process your request." },
+                {
+                    role: "assistant",
+                    text: data.reply || "Assistant temporarily unavailable."
+                }
             ]);
         } catch {
             setMessages((prev) => [
                 ...prev,
                 {
                     role: "assistant",
-                    text: "Assistant is currently unavailable. Please try again later.",
+                    text: "Assistant temporarily unavailable.",
                     isError: true,
                 },
             ]);
