@@ -848,67 +848,63 @@ if (require.main === module) {
 }
 
 // ─── AI Chatbot Route (HF Space proxy) ───────────────────────────────────────
-const HF_SPACE_URL = process.env.HF_SPACE_URL || "https://sagar2080-vibebank-assistant.hf.space";
-
 app.post("/api/chatbot", authMiddleware, async (req, res) => {
-  const { message, context } = req.body;
-
-  console.log("[chatbot] Incoming message:", message);
-
-  if (!message || typeof message !== "string" || message.trim().length === 0) {
-    return res.status(400).json({ error: "message is required" });
-  }
-  if (message.length > 1000) {
-    return res.status(400).json({ error: "message too long (max 1000 chars)" });
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
-
   try {
-    const hfUrl = `${HF_SPACE_URL}/chat`;
-    console.log("[chatbot] Calling HF Space:", hfUrl);
+    const { message, context } = req.body;
 
-    const response = await fetch(hfUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: message.trim(), context: context || undefined }),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeout);
-    console.log("[chatbot] HF Space response status:", response.status);
-
-    const rawBody = await response.text();
-    console.log("[chatbot] HF Space response body:", rawBody.substring(0, 300));
-
-    if (response.status === 503) {
-      return res.status(503).json({ error: "AI model is warming up. Please try again in 20 seconds." });
+    if (!message || typeof message !== "string" || message.trim().length === 0) {
+      return res.status(400).json({ error: "message is required" });
     }
 
-    if (!response.ok) {
-      console.error("[chatbot] HF Space error:", response.status, rawBody);
-      return res.status(502).json({ error: "AI service error", details: response.status });
+    const payload = {
+      message: message.trim(),
+      context: context ? {
+        totalBalance: context.totalBalance,
+        accountCount: context.accountCount,
+        dailyLimit: context.dailyLimit
+      } : undefined
+    };
+
+    console.log("Sending to HF:", JSON.stringify(payload, null, 2));
+
+    const response = await fetch("https://sagar2080-vibebank-assistant.hf.space/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    console.log("HF status:", response.status);
+
+    const rawText = await response.text();
+    console.log("HF raw text:", rawText);
+
+    if (response.status !== 200) {
+      return res.status(500).json({
+        error: "HF service error",
+        details: rawText
+      });
     }
 
     let data;
     try {
-      data = JSON.parse(rawBody);
-    } catch {
-      console.error("[chatbot] Failed to parse HF Space JSON:", rawBody);
-      return res.status(502).json({ error: "AI service error", details: "invalid_json" });
+      data = JSON.parse(rawText);
+    } catch (parseErr) {
+      console.error("Failed to parse HF JSON:", rawText);
+      return res.status(500).json({
+        error: "HF service error",
+        details: "invalid_json",
+        raw: rawText
+      });
     }
 
     return res.json({ reply: data.reply || "I'm sorry, I couldn't generate a response." });
 
   } catch (err) {
-    clearTimeout(timeout);
-    console.error("[chatbot] Error name:", err.name);
-    console.error("[chatbot] Error message:", err.message);
-    if (err.name === "AbortError") {
-      return res.status(504).json({ error: "AI service timed out. Please try again." });
-    }
-    return res.status(502).json({ error: "AI service unreachable" });
+    console.error("Chatbot backend error:", err);
+    return res.status(500).json({
+      error: "Backend error",
+      message: err.message
+    });
   }
 });
 
