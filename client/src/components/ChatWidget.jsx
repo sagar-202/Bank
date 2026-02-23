@@ -46,7 +46,7 @@ export default function ChatWidget() {
         setLoading(true);
 
         try {
-            const res = await fetch("http://localhost:5000/api/chatbot", {
+            const res = await fetch("/api/chatbot", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json"
